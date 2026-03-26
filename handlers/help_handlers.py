@@ -52,7 +52,6 @@ async def _send_welcome(update_or_query, user, gender: str, is_callback=False):
             InlineKeyboardButton("📖 Tutorial",   callback_data="help_tutorial"),
             InlineKeyboardButton("📋 Commands",   callback_data="help_commands"),
         ],
-        [InlineKeyboardButton("👤 Lihat Profil",  callback_data="help_profile")],
     ]
     if is_callback:
         await update_or_query.edit_message_text(
@@ -367,10 +366,7 @@ async def help_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data == "help_profile":
-        await query.edit_message_text(
-            "👤 Ketik /profile untuk melihat karakter kamu!",
-            parse_mode="Markdown"
-        )
+        await query.answer("Ketik /profile untuk lihat karakter kamu!", show_alert=True)
 
     elif data in TUTORIAL_PAGES:
         await query.edit_message_text(
