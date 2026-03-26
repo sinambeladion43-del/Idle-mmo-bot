@@ -52,6 +52,8 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("war",         battle_handlers.war_history))
 
     app.add_handler(CommandHandler("kingdom",     kingdom_handlers.kingdom))
+    app.add_handler(CommandHandler("join",        kingdom_handlers.join))
+    app.add_handler(CommandHandler("leave",       kingdom_handlers.leave))
     app.add_handler(CommandHandler("contribute",  kingdom_handlers.contribute))
     app.add_handler(CommandHandler("kadmin",      kingdom_handlers.kadmin))
 
