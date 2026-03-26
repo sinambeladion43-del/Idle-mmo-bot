@@ -43,6 +43,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("daily",       player_handlers.daily))
     app.add_handler(CommandHandler("leaderboard", player_handlers.leaderboard))
     app.add_handler(CommandHandler("inventory",   player_handlers.inventory))
+    app.add_handler(CommandHandler("setname",     player_handlers.setname))
 
     app.add_handler(CommandHandler("build",       building_handlers.build))
     app.add_handler(CommandHandler("status",      building_handlers.status))
