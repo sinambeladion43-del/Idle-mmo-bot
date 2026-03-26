@@ -100,4 +100,4 @@ MAX_COLLECT_HOURS = 12   # Resources cap at 12 h of production
 MARKET_FEE = 0.05        # 5 % fee on sales
 
 # ── Kingdom ──────────────────────────────────
-KINGDOM_CONTRIBUTE_MIN = 11   # Minimum resource per contribution
+KINGDOM_CONTRIBUTE_MIN = 10   # Minimum resource per contribution
