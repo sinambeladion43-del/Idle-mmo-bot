@@ -168,6 +168,18 @@ async def kwar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("😅 Kamu tidak bisa menyerang kerajaanmu sendiri!")
         return
 
+    # Cek apakah sesama aliansi
+    from database import get_alliance
+    my_al    = await get_alliance(my_kd["id"])
+    enemy_al = await get_alliance(enemy_kd["id"])
+    if my_al and enemy_al and my_al["id"] == enemy_al["id"]:
+        await update.message.reply_text(
+            f"🤝 *Tidak bisa menyerang sesama aliansi!*\n\n"
+            f"*{enemy_kd['name']}* adalah anggota aliansi *{my_al['name']}*.",
+            parse_mode="Markdown"
+        )
+        return
+
     # Cek cooldown
     now      = int(time.time())
     last_war = await get_last_war_between(my_kd["id"], enemy_kd["id"])
