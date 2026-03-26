@@ -9,7 +9,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await create_player(user.id, user.username or user.first_name)
 
     text = (
-        f"⚔️ *Selamat datang di KINGDOM OF AETHEL, {user.first_name}!*\n\n"
+        f"⚔️ *Selamat datang di IDLE MMO, {user.first_name}!*\n\n"
         "🏰 Kamu sudah terdaftar sebagai petualang!\n\n"
         "📜 *Langkah Pertama:*\n"
         "1️⃣ Klaim `/daily` untuk reward gratis\n"
@@ -70,6 +70,16 @@ async def help_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "`/kwar [nama kerajaan]` — Tantang kerajaan lain\n"
         "`/kwar history` — Riwayat perang kerajaan\n\n"
 
+        "🤝 *Aliansi*\n"
+        "`/alliance` — Info aliansi kerajaan kamu\n"
+        "`/alliance create [nama]` — Buat aliansi baru\n"
+        "`/alliance invite [nama kd]` — Undang kerajaan lain\n"
+        "`/alliance accept` — Terima undangan aliansi\n"
+        "`/alliance reject` — Tolak undangan aliansi\n"
+        "`/alliance leave` — Keluar dari aliansi\n"
+        "`/alliance disband` — Bubarkan aliansi (founder)\n"
+        "`/alliance list` — Lihat semua aliansi\n\n"
+
         "💰 *Market & Trading*\n"
         "`/market` — Lihat semua listing pasar\n"
         "`/market sell [res] [jml] [harga]` — Jual resource\n"
@@ -98,9 +108,12 @@ async def tutorial(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("5️⃣ Market & Trade",  callback_data="help_tut_5"),
             InlineKeyboardButton("6️⃣ Kingdom War",     callback_data="help_tut_6"),
         ],
+        [
+            InlineKeyboardButton("🤝 Aliansi",          callback_data="help_tut_7"),
+        ],
     ]
     await update.message.reply_text(
-        "📖 *TUTORIAL KINGDOM OF AETHEL*\n\nPilih topik yang ingin kamu pelajari:",
+        "📖 *TUTORIAL IDLE MMO*\n\nPilih topik yang ingin kamu pelajari:",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(kb)
     )
@@ -133,7 +146,7 @@ async def commands_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 TUTORIAL_PAGES = {
     "help_tut_1": (
         "1️⃣ *DASAR GAME*\n\n"
-        "🎮 Ini adalah *KINGDOM OF AETHEL* — game yang jalan terus meski kamu offline!\n\n"
+        "🎮 Ini adalah *Idle MMO* — game yang jalan terus meski kamu offline!\n\n"
         "📌 *Cara Main:*\n"
         "• `/start` untuk daftar\n"
         "• `/daily` setiap hari untuk Gold + Resource gratis\n"
@@ -237,6 +250,38 @@ TUTORIAL_PAGES = {
         "⚠️ *Hanya Admin/Officer* yang bisa nyatakan perang!\n"
         "💡 Makin banyak member aktif = kerajaan makin kuat!"
     ),
+    "help_tut_7": (
+        "🤝 *SISTEM ALIANSI*\n\n"
+        "Aliansi adalah persekutuan antar kerajaan — anggota aliansi *tidak bisa saling serang!*\n\n"
+        "📌 *Cara Buat Aliansi:*\n"
+        "1. Ketik di group kerajaan kamu:\n"
+        "   `/alliance create Nama Aliansi`\n"
+        "2. Kerajaanmu otomatis jadi *Pendiri*\n"
+        "3. Undang kerajaan lain untuk bergabung\n\n"
+        "📨 *Cara Mengundang Kerajaan Lain:*\n"
+        "`/alliance invite Nama Kerajaan`\n"
+        "• Kerajaan target dapat notifikasi otomatis di group mereka\n"
+        "• Mereka bisa terima dengan `/alliance accept`\n"
+        "• Atau tolak dengan `/alliance reject`\n\n"
+        "📋 *Semua Command Aliansi:*\n"
+        "`/alliance` — lihat info aliansi & undangan pending\n"
+        "`/alliance create [nama]` — buat aliansi baru\n"
+        "`/alliance invite [nama kd]` — undang kerajaan\n"
+        "`/alliance accept` — terima undangan\n"
+        "`/alliance reject` — tolak undangan\n"
+        "`/alliance leave` — keluar dari aliansi\n"
+        "`/alliance disband` — bubarkan aliansi (pendiri)\n"
+        "`/alliance list` — lihat semua aliansi yang ada\n\n"
+        "🔒 *Permission:*\n"
+        "• Hanya *Admin Kerajaan* yang bisa buat, undang, terima, keluar, atau bubarkan aliansi\n\n"
+        "⚔️ *Efek di Kingdom War:*\n"
+        "• Kerajaan yang bersekutu *tidak bisa saling serang*\n"
+        "• Gunakan aliansi untuk perlindungan dari serangan!\n\n"
+        "💡 *Tips:*\n"
+        "• Satu kerajaan hanya bisa di *satu aliansi*\n"
+        "• Pendiri tidak bisa keluar biasa — harus disband dulu\n"
+        "• Ketik `/alliance` tanpa argumen untuk cek status & undangan"
+    ),
 }
 
 _BACK_KB = InlineKeyboardMarkup([[
@@ -262,6 +307,9 @@ async def help_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             [
                 InlineKeyboardButton("5️⃣ Market & Trade", callback_data="help_tut_5"),
                 InlineKeyboardButton("6️⃣ Kingdom War",    callback_data="help_tut_6"),
+            ],
+            [
+                InlineKeyboardButton("🤝 Aliansi",         callback_data="help_tut_7"),
             ],
         ]
         await query.edit_message_text(
