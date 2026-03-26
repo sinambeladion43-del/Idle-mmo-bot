@@ -8,6 +8,7 @@ from telegram.ext import (
 from config import BOT_TOKEN
 from database import init_db
 from handlers import (
+    alliance_handlers,
     kwar_handlers,
     player_handlers,
     building_handlers,
@@ -64,6 +65,9 @@ def build_app() -> Application:
 
     app.add_handler(CommandHandler("admin",       admin_handlers.admin))
 
+    # ── Alliance
+    app.add_handler(CommandHandler("alliance",    alliance_handlers.alliance))
+
     # ── Kingdom War ──────────────────────────────────────────────
     app.add_handler(CommandHandler("kwar",        kwar_handlers.kwar))
 
@@ -73,6 +77,7 @@ def build_app() -> Application:
     app.add_handler(CallbackQueryHandler(help_handlers.help_callback,       pattern="^help_"))
     app.add_handler(CallbackQueryHandler(battle_handlers.battle_callback,   pattern="^battle_"))
     app.add_handler(CallbackQueryHandler(kwar_handlers.kwar_callback,        pattern="^kwar_"))
+    app.add_handler(CallbackQueryHandler(alliance_handlers.alliance_callback,   pattern="^al_"))
 
     return app
 
