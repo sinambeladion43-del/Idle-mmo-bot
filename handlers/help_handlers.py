@@ -1,16 +1,52 @@
-import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from database import get_player, create_player
+from database import get_player, create_player, update_player
+from game_data import exp_needed
 
-# ─────────────────────────────────────────────
+
+def _escape(text: str) -> str:
+    for ch in ["_", "*", "[", "]", "`"]:
+        text = text.replace(ch, f"\\{ch}")
+    return text
+
+
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await create_player(user.id, user.username or user.first_name)
+    player = await get_player(user.id)
 
-    text = (
-        f"⚔️ *Selamat datang di IDLE MMO, {user.first_name}!*\n\n"
-        "🏰 Kamu sudah terdaftar sebagai petualang!\n\n"
+    if not player["gender"]:
+        kb = [[
+            InlineKeyboardButton("⚔️ Pria",   callback_data="help_gender_male"),
+            InlineKeyboardButton("🌸 Wanita", callback_data="help_gender_female"),
+        ]]
+        await update.message.reply_text(
+            f"⚔️ *Selamat datang di IDLE MMO, {user.first_name}!*\n\n"
+            "Sebelum memulai petualangan...\n\n"
+            "👤 *Pilih Gender Karaktermu:*",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
+        return
+
+    await _send_welcome(update.message, player)
+
+
+async def _send_welcome(message_obj, player):
+    gender_icon  = "⚔️" if player["gender"] == "male" else "🌸"
+    gender_label = "Pria" if player["gender"] == "male" else "Wanita"
+    name = _escape(player["username"])
+    kb = [
+        [
+            InlineKeyboardButton("📖 Tutorial",  callback_data="help_tutorial"),
+            InlineKeyboardButton("📋 Commands",  callback_data="help_commands"),
+        ],
+        [InlineKeyboardButton("👤 Lihat Profil", callback_data="help_profile")],
+    ]
+    await message_obj.reply_text(
+        f"⚔️ *Selamat datang di IDLE MMO, {name}!*\n\n"
+        f"🏰 Kamu sudah terdaftar sebagai petualang!\n"
+        f"{gender_icon} Gender: *{gender_label}*\n\n"
         "📜 *Langkah Pertama:*\n"
         "1️⃣ Klaim `/daily` untuk reward gratis\n"
         "2️⃣ Bangun `/build farm` untuk produksi Food\n"
@@ -20,62 +56,56 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "Tambahkan bot ke Group Telegram — satu group = satu Kingdom!\n"
         "Lalu ketik `/join` di group untuk bergabung.\n\n"
         "📖 /tutorial — panduan lengkap cara main\n"
-        "📋 /help — semua command"
-    )
-    kb = [
-        [
-            InlineKeyboardButton("📖 Tutorial",    callback_data="help_tutorial"),
-            InlineKeyboardButton("📋 Commands",    callback_data="help_commands"),
-        ],
-        [InlineKeyboardButton("👤 Lihat Profil",   callback_data="help_profile")],
-    ]
-    await update.message.reply_text(
-        text, parse_mode="Markdown",
+        "📋 /help — semua command",
+        parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(kb)
     )
 
-# ─────────────────────────────────────────────
+
 async def help_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = (
         "📋 *SEMUA COMMAND*\n\n"
-
         "👤 *Player*\n"
         "`/start` — Daftar & mulai game\n"
         "`/profile` — Lihat stats & level kamu\n"
         "`/inventory` — Lihat resource kamu\n"
         "`/resources` — Lihat resource + tips jual\n"
         "`/daily` — Klaim reward harian (reset 24 jam)\n"
+        "`/setname [nama]` — Ganti nama karakter\n"
         "`/leaderboard` — Ranking 10 pemain terkuat\n\n"
-
         "🏘️ *Bangunan*\n"
         "`/buildings` — Lihat semua bangunan & levelnya\n"
         "`/build [nama]` — Bangun atau upgrade bangunan\n"
         "`/status` — Cek bangunan yang sedang dibangun\n"
         "`/collect` — Ambil resource produksi offline\n\n"
-
         "⚔️ *Battle (1v1)*\n"
         "`/attack @username` — Serang pemain lain\n"
         "`/defend` — Lihat kekuatan pertahanan kamu\n"
         "`/war` — Riwayat pertempuran 1v1\n\n"
-
         "🏰 *Kingdom*\n"
         "`/kingdom` — Info kerajaan (group/DM)\n"
         "`/join` — Bergabung ke kerajaan group ini\n"
         "`/leave` — Keluar dari kerajaan\n"
         "`/contribute [res] [jml]` — Sumbang ke kas kerajaan\n"
         "`/kadmin` — Command admin kerajaan\n\n"
-
         "🔥 *Kingdom War*\n"
         "`/kwar` — Info & stats kingdom war\n"
         "`/kwar [nama kerajaan]` — Tantang kerajaan lain\n"
         "`/kwar history` — Riwayat perang kerajaan\n\n"
-
+        "🤝 *Aliansi*\n"
+        "`/alliance` — Info aliansi kerajaan kamu\n"
+        "`/alliance create [nama]` — Buat aliansi baru\n"
+        "`/alliance invite [nama kd]` — Undang kerajaan lain\n"
+        "`/alliance accept` — Terima undangan\n"
+        "`/alliance reject` — Tolak undangan\n"
+        "`/alliance leave` — Keluar dari aliansi\n"
+        "`/alliance disband` — Bubarkan aliansi\n"
+        "`/alliance list` — Lihat semua aliansi\n\n"
         "💰 *Market & Trading*\n"
         "`/market` — Lihat semua listing pasar\n"
         "`/market sell [res] [jml] [harga]` — Jual resource\n"
         "`/market buy [ID]` — Beli listing di pasar\n"
         "`/trade @user [res] [jml] [res] [jml]` — Trade langsung\n\n"
-
         "📖 *Bantuan*\n"
         "`/tutorial` — Panduan lengkap cara main\n"
         "`/help` — Tampilkan pesan ini\n"
@@ -83,21 +113,22 @@ async def help_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
-# ─────────────────────────────────────────────
+
 async def tutorial(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     kb = [
         [
-            InlineKeyboardButton("1️⃣ Dasar Game",      callback_data="help_tut_1"),
-            InlineKeyboardButton("2️⃣ Bangunan",        callback_data="help_tut_2"),
+            InlineKeyboardButton("1️⃣ Dasar Game",     callback_data="help_tut_1"),
+            InlineKeyboardButton("2️⃣ Bangunan",       callback_data="help_tut_2"),
         ],
         [
-            InlineKeyboardButton("3️⃣ Battle 1v1",      callback_data="help_tut_3"),
-            InlineKeyboardButton("4️⃣ Kingdom",         callback_data="help_tut_4"),
+            InlineKeyboardButton("3️⃣ Battle 1v1",     callback_data="help_tut_3"),
+            InlineKeyboardButton("4️⃣ Kingdom",        callback_data="help_tut_4"),
         ],
         [
-            InlineKeyboardButton("5️⃣ Market & Trade",  callback_data="help_tut_5"),
-            InlineKeyboardButton("6️⃣ Kingdom War",     callback_data="help_tut_6"),
+            InlineKeyboardButton("5️⃣ Market & Trade", callback_data="help_tut_5"),
+            InlineKeyboardButton("6️⃣ Kingdom War",    callback_data="help_tut_6"),
         ],
+        [InlineKeyboardButton("🤝 Aliansi",            callback_data="help_tut_7")],
     ]
     await update.message.reply_text(
         "📖 *TUTORIAL IDLE MMO*\n\nPilih topik yang ingin kamu pelajari:",
@@ -105,7 +136,7 @@ async def tutorial(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(kb)
     )
 
-# ─────────────────────────────────────────────
+
 async def commands_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = (
         "⚙️ *COMMAND ADMIN*\n\n"
@@ -129,7 +160,7 @@ async def commands_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
-# ─────────────────────────────────────────────
+
 TUTORIAL_PAGES = {
     "help_tut_1": (
         "1️⃣ *DASAR GAME*\n\n"
@@ -237,18 +268,86 @@ TUTORIAL_PAGES = {
         "⚠️ *Hanya Admin/Officer* yang bisa nyatakan perang!\n"
         "💡 Makin banyak member aktif = kerajaan makin kuat!"
     ),
+    "help_tut_7": (
+        "🤝 *SISTEM ALIANSI*\n\n"
+        "Aliansi adalah persekutuan antar kerajaan — anggota aliansi *tidak bisa saling serang!*\n\n"
+        "📌 *Cara Buat Aliansi:*\n"
+        "1. Ketik di group kerajaan kamu:\n"
+        "   `/alliance create Nama Aliansi`\n"
+        "2. Kerajaanmu otomatis jadi *Pendiri*\n"
+        "3. Undang kerajaan lain untuk bergabung\n\n"
+        "📨 *Cara Mengundang:*\n"
+        "`/alliance invite Nama Kerajaan`\n"
+        "• Target dapat notifikasi otomatis di group mereka\n"
+        "• Terima: `/alliance accept` | Tolak: `/alliance reject`\n\n"
+        "📋 *Semua Command:*\n"
+        "`/alliance` — lihat info & undangan pending\n"
+        "`/alliance create [nama]` — buat aliansi\n"
+        "`/alliance invite [nama kd]` — undang kerajaan\n"
+        "`/alliance accept` — terima undangan\n"
+        "`/alliance reject` — tolak undangan\n"
+        "`/alliance leave` — keluar dari aliansi\n"
+        "`/alliance disband` — bubarkan aliansi\n"
+        "`/alliance list` — lihat semua aliansi\n\n"
+        "⚔️ Sesama anggota aliansi *tidak bisa saling serang*!\n"
+        "💡 Satu kerajaan hanya bisa di *satu aliansi*"
+    ),
 }
 
 _BACK_KB = InlineKeyboardMarkup([[
     InlineKeyboardButton("⬅️ Kembali ke Tutorial", callback_data="help_tutorial")
 ]])
 
-# ─────────────────────────────────────────────
+
 async def help_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
 
+    # ── Gender selection ──────────────────────
+    if data in ("help_gender_male", "help_gender_female"):
+        user = update.effective_user
+        gender = "male" if data == "help_gender_male" else "female"
+        await update_player(user.id, gender=gender)
+        player = await get_player(user.id)
+        # Kirim pesan welcome BARU — tidak edit pesan gender
+        await _send_welcome(query.message, player)
+        return
+
+    # ── Tombol Lihat Profil ───────────────────
+    if data == "help_profile":
+        user = update.effective_user
+        player = await get_player(user.id)
+        if not player:
+            return
+        next_exp = exp_needed(player["level"])
+        bar_fill = int((player["exp"] / next_exp) * 10)
+        bar = "█" * bar_fill + "░" * (10 - bar_fill)
+        gender_icon  = "⚔️" if player["gender"] == "male" else "🌸" if player["gender"] == "female" else "❓"
+        gender_label = "Pria" if player["gender"] == "male" else "Wanita" if player["gender"] == "female" else "Belum dipilih"
+        name = _escape(player["username"])
+        text = (
+            f"👤 *Profil: {name}*\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"{gender_icon} Gender  : {gender_label}\n"
+            f"⭐ Level   : {player['level']}\n"
+            f"📊 EXP     : {player['exp']}/{next_exp}\n"
+            f"[{bar}]\n"
+            f"❤️ HP       : {player['hp']}/{player['max_hp']}\n"
+            f"⚔️ Attack   : {player['attack_pow']}\n"
+            f"🛡️ Defense  : {player['defense_pow']}\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"🪙 Gold     : {player['gold']:,}\n"
+            f"🪵 Wood     : {player['wood']:,}\n"
+            f"🪨 Stone    : {player['stone']:,}\n"
+            f"🌾 Food     : {player['food']:,}\n"
+            f"⚔️ Iron     : {player['iron']:,}\n"
+        )
+        # Kirim sebagai pesan BARU
+        await query.message.reply_text(text, parse_mode="Markdown")
+        return
+
+    # ── Tutorial navigation (edit message) ───
     if data == "help_tutorial":
         kb = [
             [
@@ -263,6 +362,7 @@ async def help_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton("5️⃣ Market & Trade", callback_data="help_tut_5"),
                 InlineKeyboardButton("6️⃣ Kingdom War",    callback_data="help_tut_6"),
             ],
+            [InlineKeyboardButton("🤝 Aliansi",            callback_data="help_tut_7")],
         ]
         await query.edit_message_text(
             "📖 *TUTORIAL IDLE MMO*\n\nPilih topik:",
@@ -273,12 +373,6 @@ async def help_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     elif data == "help_commands":
         await query.edit_message_text(
             "📋 Ketik /help untuk melihat semua command.",
-            parse_mode="Markdown"
-        )
-
-    elif data == "help_profile":
-        await query.edit_message_text(
-            "👤 Ketik /profile untuk melihat karakter kamu!",
             parse_mode="Markdown"
         )
 
