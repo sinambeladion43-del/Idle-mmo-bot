@@ -1,16 +1,41 @@
 import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from database import get_player, create_player
+from database import get_player, create_player, update_player
 
 # ─────────────────────────────────────────────
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await create_player(user.id, user.username or user.first_name)
+    player = await get_player(user.id)
+
+    # Kalau belum pilih gender → tampilkan pilihan gender dulu
+    if not player["gender"]:
+        kb = [[
+            InlineKeyboardButton("⚔️ Pria",   callback_data="gender_male"),
+            InlineKeyboardButton("🌸 Wanita", callback_data="gender_female"),
+        ]]
+        await update.message.reply_text(
+            f"⚔️ *Selamat datang di IDLE MMO, {user.first_name}!*\n\n"
+            "Sebelum memulai petualangan...\n\n"
+            "👤 *Pilih Gender Karaktermu:*",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
+        return
+
+    # Sudah punya gender → tampilkan welcome biasa
+    await _send_welcome(update, user, player["gender"])
+
+
+async def _send_welcome(update_or_query, user, gender: str, is_callback=False):
+    gender_icon = "⚔️" if gender == "male" else "🌸"
+    gender_label = "Pria" if gender == "male" else "Wanita"
 
     text = (
         f"⚔️ *Selamat datang di IDLE MMO, {user.first_name}!*\n\n"
-        "🏰 Kamu sudah terdaftar sebagai petualang!\n\n"
+        f"🏰 Kamu sudah terdaftar sebagai petualang!\n"
+        f"{gender_icon} Gender: *{gender_label}*\n\n"
         "📜 *Langkah Pertama:*\n"
         "1️⃣ Klaim `/daily` untuk reward gratis\n"
         "2️⃣ Bangun `/build farm` untuk produksi Food\n"
@@ -24,15 +49,21 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
     kb = [
         [
-            InlineKeyboardButton("📖 Tutorial",    callback_data="help_tutorial"),
-            InlineKeyboardButton("📋 Commands",    callback_data="help_commands"),
+            InlineKeyboardButton("📖 Tutorial",   callback_data="help_tutorial"),
+            InlineKeyboardButton("📋 Commands",   callback_data="help_commands"),
         ],
-        [InlineKeyboardButton("👤 Lihat Profil",   callback_data="help_profile")],
+        [InlineKeyboardButton("👤 Lihat Profil",  callback_data="help_profile")],
     ]
-    await update.message.reply_text(
-        text, parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(kb)
-    )
+    if is_callback:
+        await update_or_query.edit_message_text(
+            text, parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
+    else:
+        await update_or_query.message.reply_text(
+            text, parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
 
 # ─────────────────────────────────────────────
 async def help_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -45,6 +76,7 @@ async def help_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "`/inventory` — Lihat resource kamu\n"
         "`/resources` — Lihat resource + tips jual\n"
         "`/daily` — Klaim reward harian (reset 24 jam)\n"
+        "`/setname [nama]` — Ganti nama karakter\n"
         "`/leaderboard` — Ranking 10 pemain terkuat\n\n"
 
         "🏘️ *Bangunan*\n"
@@ -294,6 +326,16 @@ async def help_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
 
+    # ── Pilih gender saat registrasi ──────────
+    if data in ("gender_male", "gender_female"):
+        user = update.effective_user
+        gender = "male" if data == "gender_male" else "female"
+        await update_player(user.id, gender=gender)
+        player = await get_player(user.id)
+        await _send_welcome(query, user, gender, is_callback=True)
+        return
+
+    # ── Tutorial navigation ───────────────────
     if data == "help_tutorial":
         kb = [
             [
