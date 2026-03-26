@@ -16,21 +16,21 @@ async def init_db():
             username    TEXT DEFAULT 'Unknown',
             level       INTEGER DEFAULT 1,
             exp         INTEGER DEFAULT 0,
-            gold        INTEGER DEFAULT 200,
-            wood        INTEGER DEFAULT 200,
-            stone       INTEGER DEFAULT 200,
-            food        INTEGER DEFAULT 200,
-            iron        INTEGER DEFAULT 200,
+            gold        INTEGER DEFAULT 100,
+            wood        INTEGER DEFAULT 50,
+            stone       INTEGER DEFAULT 50,
+            food        INTEGER DEFAULT 50,
+            iron        INTEGER DEFAULT 0,
             attack_pow  INTEGER DEFAULT 10,
             defense_pow INTEGER DEFAULT 10,
             hp          INTEGER DEFAULT 100,
             max_hp      INTEGER DEFAULT 100,
             last_daily  INTEGER DEFAULT 0,
             last_collect INTEGER DEFAULT 0,
-            last_setname INTEGER DEFAULT 0,
             is_banned   INTEGER DEFAULT 0,
             kingdom_id  INTEGER DEFAULT 0,
             role        TEXT DEFAULT 'member',
+            gender      TEXT DEFAULT '',
             created_at  INTEGER DEFAULT 0
         );
 
@@ -52,9 +52,10 @@ async def init_db():
             wood        INTEGER DEFAULT 0,
             stone       INTEGER DEFAULT 0,
             food        INTEGER DEFAULT 0,
-            iron        INTEGER DEFAULT 200,
+            iron        INTEGER DEFAULT 0,
             tax_rate    INTEGER DEFAULT 5,
             admin_id    INTEGER DEFAULT 0,
+            gender      TEXT DEFAULT '',
             created_at  INTEGER DEFAULT 0
         );
 
@@ -78,6 +79,7 @@ async def init_db():
             resource    TEXT,
             amount      INTEGER,
             price       INTEGER,
+            gender      TEXT DEFAULT '',
             created_at  INTEGER DEFAULT 0
         );
 
@@ -143,9 +145,9 @@ async def init_db():
         """)
         await db.commit()
 
-        # Migration: tambah kolom last_setname jika belum ada (untuk DB lama)
+        # Migration: tambah kolom gender jika belum ada
         try:
-            await db.execute("ALTER TABLE players ADD COLUMN last_setname INTEGER DEFAULT 0")
+            await db.execute("ALTER TABLE players ADD COLUMN gender TEXT DEFAULT ''")
             await db.commit()
         except Exception:
             pass  # Kolom sudah ada, skip
