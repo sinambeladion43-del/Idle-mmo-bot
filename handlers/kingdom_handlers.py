@@ -1,4 +1,6 @@
 import time
+import aiosqlite
+import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import (
@@ -7,6 +9,8 @@ from database import (
     get_kingdom_members
 )
 from game_data import RESOURCES, RESOURCE_EMOJI, KINGDOM_CONTRIBUTE_MIN
+
+DB_PATH = os.environ.get("DB_PATH", "./game.db")
 
 
 async def _ensure_player(update: Update):
@@ -20,12 +24,11 @@ async def _get_or_create_kingdom(update: Update):
     chat = update.effective_chat
     if chat.type not in ("group", "supergroup"):
         return None
-
     kingdom = await get_kingdom(chat.id)
     if not kingdom:
         admin_id = update.effective_user.id
         name = f"Kingdom of {chat.title or 'Unknown'}"
-        kid = await create_kingdom(chat.id, name, admin_id)
+        await create_kingdom(chat.id, name, admin_id)
         kingdom = await get_kingdom(chat.id)
     return kingdom
 
@@ -38,10 +41,103 @@ async def kingdom(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     chat = update.effective_chat
+
+    # ── Di DM: tampilkan info kerajaan player + tombol join ──
+    if chat.type == "private":
+        if player["kingdom_id"] == 0:
+            await update.message.reply_text(
+                "🏰 *Kingdom*\n\n"
+                "Kamu belum bergabung ke kerajaan manapun.\n\n"
+                "📌 *Cara Join Kingdom:*\n"
+                "1. Masuk ke Group Telegram yang punya bot ini\n"
+                "2. Ketik `/join` di group tersebut\n\n"
+                "📌 *Cara Buat Kingdom Baru:*\n"
+                "1. Tambahkan bot ke Group kamu\n"
+                "2. Ketik `/kingdom` di group tersebut",
+                parse_mode="Markdown"
+            )
+        else:
+            from database import get_kingdom_by_id
+            kd = await get_kingdom_by_id(player["kingdom_id"])
+            if not kd:
+                await update_player(player["user_id"], kingdom_id=0)
+                await update.message.reply_text("❌ Kingdom kamu sudah tidak ada. Kamu telah dikeluarkan.")
+                return
+            members = await get_kingdom_members(kd["id"])
+            role_icon = "👑" if player["role"] == "kadmin" else ("⭐" if player["role"] == "officer" else "👤")
+            await update.message.reply_text(
+                f"🏰 *Kerajaanmu: {kd['name']}*\n"
+                f"━━━━━━━━━━━━━━━━\n"
+                f"⭐ Level   : {kd['level']}\n"
+                f"👥 Member  : {len(members)}\n"
+                f"💸 Pajak   : {kd['tax_rate']}%\n"
+                f"🎖️ Posisimu: {role_icon} {player['role'].title()}\n"
+                f"━━━━━━━━━━━━━━━━\n"
+                f"*Kas Kerajaan:*\n"
+                f"🪙 Gold  : {kd['gold']:,}\n"
+                f"🪵 Wood  : {kd['wood']:,}\n"
+                f"🪨 Stone : {kd['stone']:,}\n"
+                f"🌾 Food  : {kd['food']:,}\n"
+                f"⚔️ Iron  : {kd['iron']:,}\n\n"
+                f"💡 Sumbang resource: `/contribute gold 500`\n"
+                f"💡 Keluar kerajaan: `/leave`",
+                parse_mode="Markdown"
+            )
+        return
+
+    # ── Di Group ──────────────────────────────────────────────
+    kd = await _get_or_create_kingdom(update)
+    if not kd:
+        await update.message.reply_text("❌ Gagal memuat kingdom.")
+        return
+
+    # Auto-assign player ke kingdom ini kalau belum join manapun
+    if player["kingdom_id"] == 0:
+        await update_player(player["user_id"], kingdom_id=kd["id"], role="member")
+        player = await get_player(player["user_id"])
+
+    members = await get_kingdom_members(kd["id"])
+
+    text = (
+        f"🏰 *{kd['name']}*\n"
+        f"━━━━━━━━━━━━━━━━\n"
+        f"⭐ Level   : {kd['level']}\n"
+        f"👥 Member  : {len(members)}\n"
+        f"💸 Pajak   : {kd['tax_rate']}%\n"
+        f"━━━━━━━━━━━━━━━━\n"
+        f"*Kas Kerajaan:*\n"
+        f"🪙 Gold  : {kd['gold']:,}\n"
+        f"🪵 Wood  : {kd['wood']:,}\n"
+        f"🪨 Stone : {kd['stone']:,}\n"
+        f"🌾 Food  : {kd['food']:,}\n"
+        f"⚔️ Iron  : {kd['iron']:,}\n\n"
+        f"💡 Ketik `/join` untuk bergabung ke kerajaan ini!\n"
+        f"💡 Sumbang: `/contribute gold 500`"
+    )
+
+    kb = [[
+        InlineKeyboardButton("👥 Member",    callback_data="kingdom_members"),
+        InlineKeyboardButton("🏆 Top Kingdom", callback_data="kingdom_top"),
+    ]]
+    await update.message.reply_text(
+        text, parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(kb)
+    )
+
+
+# ──────────────────────────────────────────────
+async def join(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Ketik /join di group untuk bergabung ke kerajaan group tersebut."""
+    player = await _ensure_player(update)
+    if player["is_banned"]:
+        await update.message.reply_text("🚫 Akun kamu di-ban.")
+        return
+
+    chat = update.effective_chat
     if chat.type not in ("group", "supergroup"):
         await update.message.reply_text(
-            "🏰 *Kingdom hanya tersedia di Group Telegram!*\n\n"
-            "Tambahkan bot ke group dan ketik /kingdom di sana.",
+            "❌ `/join` hanya bisa digunakan di dalam Group Telegram!\n\n"
+            "Masuk ke group yang ingin kamu ikuti, lalu ketik `/join` di sana.",
             parse_mode="Markdown"
         )
         return
@@ -51,31 +147,79 @@ async def kingdom(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Gagal memuat kingdom.")
         return
 
-    members = await get_kingdom_members(kd["id"])
-    member_count = len(members)
+    # Sudah di kingdom ini
+    if player["kingdom_id"] == kd["id"]:
+        await update.message.reply_text(
+            f"✅ Kamu sudah menjadi member *{kd['name']}*!",
+            parse_mode="Markdown"
+        )
+        return
 
-    text = (
-        f"🏰 *{kd['name']}*\n"
-        f"━━━━━━━━━━━━━━━━\n"
-        f"⭐ Level   : {kd['level']}\n"
-        f"👥 Member  : {member_count}\n"
-        f"💸 Pajak   : {kd['tax_rate']}%\n"
-        f"━━━━━━━━━━━━━━━━\n"
-        f"*Kas Kerajaan:*\n"
-        f"🪙 Gold    : {kd['gold']:,}\n"
-        f"🪵 Wood    : {kd['wood']:,}\n"
-        f"🪨 Stone   : {kd['stone']:,}\n"
-        f"🌾 Food    : {kd['food']:,}\n"
-        f"⚔️ Iron   : {kd['iron']:,}\n\n"
-        f"💡 Sumbangkan resource: `/contribute gold 500`"
+    # Sudah di kingdom lain
+    if player["kingdom_id"] != 0:
+        from database import get_kingdom_by_id
+        old_kd = await get_kingdom_by_id(player["kingdom_id"])
+        old_name = old_kd["name"] if old_kd else "kerajaan lama"
+        kb = [[
+            InlineKeyboardButton("✅ Ya, pindah!", callback_data=f"kingdom_switch_{kd['id']}_{chat.id}"),
+            InlineKeyboardButton("❌ Batal",       callback_data="kingdom_cancel"),
+        ]]
+        await update.message.reply_text(
+            f"⚠️ *Kamu sudah di kerajaan lain!*\n\n"
+            f"Kerajaan sekarang: *{old_name}*\n"
+            f"Kerajaan baru: *{kd['name']}*\n\n"
+            f"Yakin ingin pindah kerajaan? Semua kontribusi lama tidak bisa dikembalikan.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
+        return
+
+    # Belum punya kingdom — langsung join
+    await update_player(player["user_id"], kingdom_id=kd["id"], role="member")
+    members = await get_kingdom_members(kd["id"])
+
+    await update.message.reply_text(
+        f"🎉 *Selamat datang di {kd['name']}!*\n\n"
+        f"👥 Total member sekarang: {len(members)}\n"
+        f"💸 Pajak kerajaan: {kd['tax_rate']}%\n\n"
+        f"💡 Mulai berkontribusi: `/contribute gold 100`\n"
+        f"💡 Lihat info kerajaan: `/kingdom`",
+        parse_mode="Markdown"
     )
 
+
+# ──────────────────────────────────────────────
+async def leave(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Keluar dari kerajaan."""
+    player = await _ensure_player(update)
+    if player["is_banned"]:
+        await update.message.reply_text("🚫 Akun kamu di-ban.")
+        return
+
+    if player["kingdom_id"] == 0:
+        await update.message.reply_text("❌ Kamu tidak sedang bergabung di kerajaan manapun.")
+        return
+
+    from database import get_kingdom_by_id
+    kd = await get_kingdom_by_id(player["kingdom_id"])
+    kd_name = kd["name"] if kd else "kerajaan"
+
+    # Kalau dia admin kerajaan, tidak bisa keluar
+    if kd and kd["admin_id"] == player["user_id"]:
+        await update.message.reply_text(
+            "⚠️ Kamu adalah *Admin Kerajaan*!\n"
+            "Gunakan `/kadmin promote @user` untuk transfer kekuasaan dulu sebelum keluar.",
+            parse_mode="Markdown"
+        )
+        return
+
     kb = [[
-        InlineKeyboardButton("👥 Member", callback_data="kingdom_members"),
-        InlineKeyboardButton("📊 Stats", callback_data="kingdom_stats"),
+        InlineKeyboardButton("✅ Ya, keluar", callback_data="kingdom_leave_confirm"),
+        InlineKeyboardButton("❌ Batal",      callback_data="kingdom_cancel"),
     ]]
     await update.message.reply_text(
-        text, parse_mode="Markdown",
+        f"⚠️ Yakin ingin keluar dari *{kd_name}*?",
+        parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(kb)
     )
 
@@ -88,11 +232,23 @@ async def contribute(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     chat = update.effective_chat
-    if chat.type not in ("group", "supergroup"):
-        await update.message.reply_text(
-            "🏰 Command ini hanya tersedia di Group Telegram!",
-            parse_mode="Markdown"
-        )
+
+    # Tentukan kingdom_id dari context
+    if chat.type in ("group", "supergroup"):
+        kd = await _get_or_create_kingdom(update)
+    else:
+        if player["kingdom_id"] == 0:
+            await update.message.reply_text(
+                "❌ Kamu belum bergabung ke kerajaan manapun!\n"
+                "Masuk ke group dan ketik `/join` dulu.",
+                parse_mode="Markdown"
+            )
+            return
+        from database import get_kingdom_by_id
+        kd = await get_kingdom_by_id(player["kingdom_id"])
+
+    if not kd:
+        await update.message.reply_text("❌ Kingdom tidak ditemukan.")
         return
 
     if not ctx.args or len(ctx.args) < 2:
@@ -119,9 +275,7 @@ async def contribute(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if amount < KINGDOM_CONTRIBUTE_MIN:
-        await update.message.reply_text(
-            f"❌ Minimum kontribusi: {KINGDOM_CONTRIBUTE_MIN}"
-        )
+        await update.message.reply_text(f"❌ Minimum kontribusi: {KINGDOM_CONTRIBUTE_MIN}")
         return
 
     if player[res] < amount:
@@ -131,14 +285,9 @@ async def contribute(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    kd = await _get_or_create_kingdom(update)
-    if not kd:
-        await update.message.reply_text("❌ Kingdom tidak ditemukan.")
-        return
-
-    # Deduct from player, add to kingdom
+    group_id = kd["group_id"]
     await update_player(player["user_id"], **{res: player[res] - amount})
-    await update_kingdom(chat.id, **{res: kd[res] + amount})
+    await update_kingdom(group_id, **{res: kd[res] + amount})
 
     emoji = RESOURCE_EMOJI.get(res, "•")
     await update.message.reply_text(
@@ -166,7 +315,6 @@ async def kadmin(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Kingdom tidak ditemukan.")
         return
 
-    # Check if user is kingdom admin or officer
     user = update.effective_user
     chat_member = await ctx.bot.get_chat_member(chat.id, user.id)
     is_admin = chat_member.status in ("administrator", "creator") or kd["admin_id"] == user.id
@@ -230,8 +378,6 @@ async def kadmin(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Format: `/kadmin promote @username`", parse_mode="Markdown")
             return
         target_uname = ctx.args[1].lstrip("@")
-        import aiosqlite, os
-        DB_PATH = os.environ.get("DB_PATH", "./game.db")
         async with aiosqlite.connect(DB_PATH) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute("SELECT * FROM players WHERE username=?", (target_uname,)) as cur:
@@ -247,8 +393,6 @@ async def kadmin(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Format: `/kadmin kick @username`", parse_mode="Markdown")
             return
         target_uname = ctx.args[1].lstrip("@")
-        import aiosqlite, os
-        DB_PATH = os.environ.get("DB_PATH", "./game.db")
         async with aiosqlite.connect(DB_PATH) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute("SELECT * FROM players WHERE username=?", (target_uname,)) as cur:
@@ -268,13 +412,19 @@ async def kingdom_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
+    user = update.effective_user
 
     if data == "kingdom_members":
         chat = update.effective_chat
-        if not chat or chat.type not in ("group", "supergroup"):
-            await query.edit_message_text("❌ Hanya tersedia di group.")
-            return
-        kd = await get_kingdom(chat.id)
+        kd = None
+        if chat and chat.type in ("group", "supergroup"):
+            kd = await get_kingdom(chat.id)
+        else:
+            await create_player(user.id, user.username or user.first_name)
+            p = await get_player(user.id)
+            if p and p["kingdom_id"]:
+                from database import get_kingdom_by_id
+                kd = await get_kingdom_by_id(p["kingdom_id"])
         if not kd:
             await query.edit_message_text("❌ Kingdom tidak ditemukan.")
             return
@@ -282,14 +432,70 @@ async def kingdom_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not members:
             await query.edit_message_text("👥 Belum ada member terdaftar di kerajaan ini.")
             return
-        lines = [f"👥 *MEMBER {kd['name']}*\n"]
+        lines = [f"👥 *MEMBER {kd['name']}* ({len(members)})\n"]
         for m in members[:20]:
             role_icon = "👑" if m["role"] == "kadmin" else ("⭐" if m["role"] == "officer" else "👤")
             lines.append(f"{role_icon} {m['username']} — Lv.{m['level']}")
         await query.edit_message_text("\n".join(lines), parse_mode="Markdown")
 
-    elif data == "kingdom_stats":
+    elif data == "kingdom_top":
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT *, (gold+wood+stone+food+iron) as total_res FROM kingdoms ORDER BY level DESC, total_res DESC LIMIT 10"
+            ) as cur:
+                kingdoms = await cur.fetchall()
+        if not kingdoms:
+            await query.edit_message_text("Belum ada kerajaan.")
+            return
+        medals = ["🥇", "🥈", "🥉"]
+        lines = ["🏆 *TOP KINGDOM*\n"]
+        for i, k in enumerate(kingdoms):
+            medal = medals[i] if i < 3 else f"{i+1}."
+            lines.append(f"{medal} *{k['name']}* — Lv.{k['level']}")
+        await query.edit_message_text("\n".join(lines), parse_mode="Markdown")
+
+    elif data == "kingdom_leave_confirm":
+        await create_player(user.id, user.username or user.first_name)
+        player = await get_player(user.id)
+        if player["kingdom_id"] == 0:
+            await query.edit_message_text("❌ Kamu tidak sedang di kerajaan manapun.")
+            return
+        from database import get_kingdom_by_id
+        kd = await get_kingdom_by_id(player["kingdom_id"])
+        kd_name = kd["name"] if kd else "kerajaan"
+        await update_player(player["user_id"], kingdom_id=0, role="member")
         await query.edit_message_text(
-            "📊 Fitur statistik kerajaan akan segera hadir!",
+            f"✅ Kamu telah keluar dari *{kd_name}*.\n\n"
+            f"Ketik `/join` di group manapun untuk bergabung lagi.",
             parse_mode="Markdown"
         )
+
+    elif data.startswith("kingdom_switch_"):
+        # format: kingdom_switch_{kingdom_id}_{group_id}
+        parts = data.split("_")
+        try:
+            new_kingdom_id = int(parts[2])
+            group_id = int(parts[3])
+        except (IndexError, ValueError):
+            await query.edit_message_text("❌ Data tidak valid.")
+            return
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM kingdoms WHERE id=?", (new_kingdom_id,)) as cur:
+                kd = await cur.fetchone()
+        if not kd:
+            await query.edit_message_text("❌ Kingdom tidak ditemukan.")
+            return
+        await create_player(user.id, user.username or user.first_name)
+        await update_player(user.id, kingdom_id=new_kingdom_id, role="member")
+        members = await get_kingdom_members(new_kingdom_id)
+        await query.edit_message_text(
+            f"🎉 *Berhasil pindah ke {kd['name']}!*\n\n"
+            f"👥 Total member: {len(members)}\n"
+            f"💡 Mulai berkontribusi: `/contribute gold 100`",
+            parse_mode="Markdown"
+        )
+
+    elif data == "kingdom_cancel":
+        await query.edit_message_text("❌ Dibatalkan.")
