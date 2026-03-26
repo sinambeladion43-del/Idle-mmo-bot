@@ -12,8 +12,8 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # Kalau belum pilih gender → tampilkan pilihan gender dulu
     if not player["gender"]:
         kb = [[
-            InlineKeyboardButton("⚔️ Pria",   callback_data="gender_male"),
-            InlineKeyboardButton("🌸 Wanita", callback_data="gender_female"),
+            InlineKeyboardButton("⚔️ Pria",   callback_data="help_gender_male"),
+            InlineKeyboardButton("🌸 Wanita", callback_data="help_gender_female"),
         ]]
         await update.message.reply_text(
             f"⚔️ *Selamat datang di IDLE MMO, {user.first_name}!*\n\n"
@@ -327,9 +327,9 @@ async def help_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = query.data
 
     # ── Pilih gender saat registrasi ──────────
-    if data in ("gender_male", "gender_female"):
+    if data in ("help_gender_male", "help_gender_female"):
         user = update.effective_user
-        gender = "male" if data == "gender_male" else "female"
+        gender = "male" if data == "help_gender_male" else "female"
         await update_player(user.id, gender=gender)
         player = await get_player(user.id)
         await _send_welcome(query, user, gender, is_callback=True)
