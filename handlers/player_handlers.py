@@ -44,9 +44,13 @@ async def profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     bar = "█" * bar_fill + "░" * (10 - bar_fill)
     name = _escape(player["username"])
 
+    gender_icon = "⚔️" if player.get("gender") == "male" else "🌸" if player.get("gender") == "female" else "❓"
+    gender_label = "Pria" if player.get("gender") == "male" else "Wanita" if player.get("gender") == "female" else "Belum dipilih"
+
     text = (
         f"👤 *Profil: {name}*\n"
         f"━━━━━━━━━━━━━━━━\n"
+        f"{gender_icon} Gender  : {gender_label}\n"
         f"⭐ Level   : {player['level']}\n"
         f"📊 EXP     : {player['exp']}/{next_exp}\n"
         f"[{bar}]\n"
