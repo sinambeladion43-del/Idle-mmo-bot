@@ -1,41 +1,16 @@
 import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from database import get_player, create_player, update_player
+from database import get_player, create_player
 
 # ─────────────────────────────────────────────
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await create_player(user.id, user.username or user.first_name)
-    player = await get_player(user.id)
-
-    # Kalau belum pilih gender → tampilkan pilihan gender dulu
-    if not player["gender"]:
-        kb = [[
-            InlineKeyboardButton("⚔️ Pria",   callback_data="help_gender_male"),
-            InlineKeyboardButton("🌸 Wanita", callback_data="help_gender_female"),
-        ]]
-        await update.message.reply_text(
-            f"⚔️ *Selamat datang di IDLE MMO, {user.first_name}!*\n\n"
-            "Sebelum memulai petualangan...\n\n"
-            "👤 *Pilih Gender Karaktermu:*",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(kb)
-        )
-        return
-
-    # Sudah punya gender → tampilkan welcome biasa
-    await _send_welcome(update, user, player["gender"])
-
-
-async def _send_welcome(update_or_query, user, gender: str, is_callback=False):
-    gender_icon = "⚔️" if gender == "male" else "🌸"
-    gender_label = "Pria" if gender == "male" else "Wanita"
 
     text = (
         f"⚔️ *Selamat datang di IDLE MMO, {user.first_name}!*\n\n"
-        f"🏰 Kamu sudah terdaftar sebagai petualang!\n"
-        f"{gender_icon} Gender: *{gender_label}*\n\n"
+        "🏰 Kamu sudah terdaftar sebagai petualang!\n\n"
         "📜 *Langkah Pertama:*\n"
         "1️⃣ Klaim `/daily` untuk reward gratis\n"
         "2️⃣ Bangun `/build farm` untuk produksi Food\n"
@@ -49,21 +24,15 @@ async def _send_welcome(update_or_query, user, gender: str, is_callback=False):
     )
     kb = [
         [
-            InlineKeyboardButton("📖 Tutorial",   callback_data="help_tutorial"),
-            InlineKeyboardButton("📋 Commands",   callback_data="help_commands"),
+            InlineKeyboardButton("📖 Tutorial",    callback_data="help_tutorial"),
+            InlineKeyboardButton("📋 Commands",    callback_data="help_commands"),
         ],
-        [InlineKeyboardButton("👤 Lihat Profil",  callback_data="help_profile")],
+        [InlineKeyboardButton("👤 Lihat Profil",   callback_data="help_profile")],
     ]
-    if is_callback:
-        await update_or_query.edit_message_text(
-            text, parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(kb)
-        )
-    else:
-        await update_or_query.message.reply_text(
-            text, parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(kb)
-        )
+    await update.message.reply_text(
+        text, parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(kb)
+    )
 
 # ─────────────────────────────────────────────
 async def help_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -76,7 +45,6 @@ async def help_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "`/inventory` — Lihat resource kamu\n"
         "`/resources` — Lihat resource + tips jual\n"
         "`/daily` — Klaim reward harian (reset 24 jam)\n"
-        "`/setname [nama]` — Ganti nama karakter\n"
         "`/leaderboard` — Ranking 10 pemain terkuat\n\n"
 
         "🏘️ *Bangunan*\n"
@@ -101,16 +69,6 @@ async def help_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "`/kwar` — Info & stats kingdom war\n"
         "`/kwar [nama kerajaan]` — Tantang kerajaan lain\n"
         "`/kwar history` — Riwayat perang kerajaan\n\n"
-
-        "🤝 *Aliansi*\n"
-        "`/alliance` — Info aliansi kerajaan kamu\n"
-        "`/alliance create [nama]` — Buat aliansi baru\n"
-        "`/alliance invite [nama kd]` — Undang kerajaan lain\n"
-        "`/alliance accept` — Terima undangan aliansi\n"
-        "`/alliance reject` — Tolak undangan aliansi\n"
-        "`/alliance leave` — Keluar dari aliansi\n"
-        "`/alliance disband` — Bubarkan aliansi (founder)\n"
-        "`/alliance list` — Lihat semua aliansi\n\n"
 
         "💰 *Market & Trading*\n"
         "`/market` — Lihat semua listing pasar\n"
@@ -139,9 +97,6 @@ async def tutorial(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         [
             InlineKeyboardButton("5️⃣ Market & Trade",  callback_data="help_tut_5"),
             InlineKeyboardButton("6️⃣ Kingdom War",     callback_data="help_tut_6"),
-        ],
-        [
-            InlineKeyboardButton("🤝 Aliansi",          callback_data="help_tut_7"),
         ],
     ]
     await update.message.reply_text(
@@ -282,38 +237,6 @@ TUTORIAL_PAGES = {
         "⚠️ *Hanya Admin/Officer* yang bisa nyatakan perang!\n"
         "💡 Makin banyak member aktif = kerajaan makin kuat!"
     ),
-    "help_tut_7": (
-        "🤝 *SISTEM ALIANSI*\n\n"
-        "Aliansi adalah persekutuan antar kerajaan — anggota aliansi *tidak bisa saling serang!*\n\n"
-        "📌 *Cara Buat Aliansi:*\n"
-        "1. Ketik di group kerajaan kamu:\n"
-        "   `/alliance create Nama Aliansi`\n"
-        "2. Kerajaanmu otomatis jadi *Pendiri*\n"
-        "3. Undang kerajaan lain untuk bergabung\n\n"
-        "📨 *Cara Mengundang Kerajaan Lain:*\n"
-        "`/alliance invite Nama Kerajaan`\n"
-        "• Kerajaan target dapat notifikasi otomatis di group mereka\n"
-        "• Mereka bisa terima dengan `/alliance accept`\n"
-        "• Atau tolak dengan `/alliance reject`\n\n"
-        "📋 *Semua Command Aliansi:*\n"
-        "`/alliance` — lihat info aliansi & undangan pending\n"
-        "`/alliance create [nama]` — buat aliansi baru\n"
-        "`/alliance invite [nama kd]` — undang kerajaan\n"
-        "`/alliance accept` — terima undangan\n"
-        "`/alliance reject` — tolak undangan\n"
-        "`/alliance leave` — keluar dari aliansi\n"
-        "`/alliance disband` — bubarkan aliansi (pendiri)\n"
-        "`/alliance list` — lihat semua aliansi yang ada\n\n"
-        "🔒 *Permission:*\n"
-        "• Hanya *Admin Kerajaan* yang bisa buat, undang, terima, keluar, atau bubarkan aliansi\n\n"
-        "⚔️ *Efek di Kingdom War:*\n"
-        "• Kerajaan yang bersekutu *tidak bisa saling serang*\n"
-        "• Gunakan aliansi untuk perlindungan dari serangan!\n\n"
-        "💡 *Tips:*\n"
-        "• Satu kerajaan hanya bisa di *satu aliansi*\n"
-        "• Pendiri tidak bisa keluar biasa — harus disband dulu\n"
-        "• Ketik `/alliance` tanpa argumen untuk cek status & undangan"
-    ),
 }
 
 _BACK_KB = InlineKeyboardMarkup([[
@@ -326,16 +249,6 @@ async def help_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
 
-    # ── Pilih gender saat registrasi ──────────
-    if data in ("help_gender_male", "help_gender_female"):
-        user = update.effective_user
-        gender = "male" if data == "help_gender_male" else "female"
-        await update_player(user.id, gender=gender)
-        player = await get_player(user.id)
-        await _send_welcome(query, user, gender, is_callback=True)
-        return
-
-    # ── Tutorial navigation ───────────────────
     if data == "help_tutorial":
         kb = [
             [
@@ -349,9 +262,6 @@ async def help_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             [
                 InlineKeyboardButton("5️⃣ Market & Trade", callback_data="help_tut_5"),
                 InlineKeyboardButton("6️⃣ Kingdom War",    callback_data="help_tut_6"),
-            ],
-            [
-                InlineKeyboardButton("🤝 Aliansi",         callback_data="help_tut_7"),
             ],
         ]
         await query.edit_message_text(
@@ -367,41 +277,10 @@ async def help_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data == "help_profile":
-        user = update.effective_user
-        from database import get_player
-        from game_data import exp_needed
-        player = await get_player(user.id)
-        if not player:
-            await query.answer("Ketik /start dulu untuk daftar!", show_alert=True)
-            return
-        def _esc(t):
-            for ch in ["_","*","[","]","`"]:
-                t = t.replace(ch, f"\\{ch}")
-            return t
-        next_exp = exp_needed(player["level"])
-        bar_fill = int((player["exp"] / next_exp) * 10)
-        bar = "█" * bar_fill + "░" * (10 - bar_fill)
-        gender_icon = "⚔️" if player.get("gender") == "male" else "🌸" if player.get("gender") == "female" else "❓"
-        gender_label = "Pria" if player.get("gender") == "male" else "Wanita" if player.get("gender") == "female" else "Belum dipilih"
-        text = (
-            f"👤 *Profil: {_esc(player['username'])}*\n"
-            f"━━━━━━━━━━━━━━━━\n"
-            f"{gender_icon} Gender  : {gender_label}\n"
-            f"⭐ Level   : {player['level']}\n"
-            f"📊 EXP     : {player['exp']}/{next_exp}\n"
-            f"[{bar}]\n"
-            f"❤️ HP       : {player['hp']}/{player['max_hp']}\n"
-            f"⚔️ Attack   : {player['attack_pow']}\n"
-            f"🛡️ Defense  : {player['defense_pow']}\n"
-            f"━━━━━━━━━━━━━━━━\n"
-            f"🪙 Gold     : {player['gold']:,}\n"
-            f"🪵 Wood     : {player['wood']:,}\n"
-            f"🪨 Stone    : {player['stone']:,}\n"
-            f"🌾 Food     : {player['food']:,}\n"
-            f"⚔️ Iron     : {player['iron']:,}\n"
+        await query.edit_message_text(
+            "👤 Ketik /profile untuk melihat karakter kamu!",
+            parse_mode="Markdown"
         )
-        await query.answer()
-        await update.effective_message.reply_text(text, parse_mode="Markdown")
 
     elif data in TUTORIAL_PAGES:
         await query.edit_message_text(
