@@ -80,6 +80,30 @@ async def init_db():
             created_at  INTEGER DEFAULT 0
         );
 
+        CREATE TABLE IF NOT EXISTS alliances (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                TEXT UNIQUE,
+            founder_kingdom_id  INTEGER,
+            created_at          INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS alliance_members (
+            alliance_id  INTEGER,
+            kingdom_id   INTEGER,
+            role         TEXT DEFAULT 'member',
+            joined_at    INTEGER DEFAULT 0,
+            PRIMARY KEY (alliance_id, kingdom_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS alliance_invites (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            alliance_id         INTEGER,
+            from_kingdom_id     INTEGER,
+            target_kingdom_id   INTEGER,
+            status              TEXT DEFAULT 'pending',
+            created_at          INTEGER DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS kingdom_wars (
             id                    INTEGER PRIMARY KEY AUTOINCREMENT,
             attacker_kingdom_id   INTEGER,
@@ -363,4 +387,106 @@ async def get_all_kingdom_wars(limit=20):
         async with db.execute(
             "SELECT * FROM kingdom_wars ORDER BY timestamp DESC LIMIT ?", (limit,)
         ) as cur:
+            return await cur.fetchall()
+
+# ──────────────────────────────────────────────
+# Alliance helpers
+# ──────────────────────────────────────────────
+async def get_alliance(kingdom_id: int):
+    """Get alliance that this kingdom belongs to."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT a.* FROM alliances a
+               JOIN alliance_members am ON a.id = am.alliance_id
+               WHERE am.kingdom_id=?""",
+            (kingdom_id,)
+        ) as cur:
+            return await cur.fetchone()
+
+async def get_alliance_by_id(alliance_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM alliances WHERE id=?", (alliance_id,)) as cur:
+            return await cur.fetchone()
+
+async def get_alliance_members(alliance_id: int):
+    """Get all kingdoms in an alliance."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT k.*, am.role as alliance_role
+               FROM kingdoms k
+               JOIN alliance_members am ON k.id = am.kingdom_id
+               WHERE am.alliance_id=?""",
+            (alliance_id,)
+        ) as cur:
+            return await cur.fetchall()
+
+async def create_alliance(name: str, founder_kingdom_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO alliances (name, founder_kingdom_id, created_at) VALUES (?,?,?)",
+            (name, founder_kingdom_id, int(time.time()))
+        )
+        await db.commit()
+        async with db.execute("SELECT id FROM alliances WHERE founder_kingdom_id=? ORDER BY id DESC LIMIT 1",
+                              (founder_kingdom_id,)) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else None
+
+async def add_alliance_member(alliance_id: int, kingdom_id: int, role: str = "member"):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO alliance_members (alliance_id, kingdom_id, role, joined_at) VALUES (?,?,?,?)",
+            (alliance_id, kingdom_id, role, int(time.time()))
+        )
+        await db.commit()
+
+async def remove_alliance_member(alliance_id: int, kingdom_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM alliance_members WHERE alliance_id=? AND kingdom_id=?",
+            (alliance_id, kingdom_id)
+        )
+        await db.commit()
+
+async def delete_alliance(alliance_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM alliance_members WHERE alliance_id=?", (alliance_id,))
+        await db.execute("DELETE FROM alliances WHERE id=?", (alliance_id,))
+        await db.commit()
+
+async def get_alliance_invite(kingdom_id: int):
+    """Get pending invite for a kingdom."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM alliance_invites WHERE target_kingdom_id=? AND status='pending'",
+            (kingdom_id,)
+        ) as cur:
+            return await cur.fetchone()
+
+async def create_alliance_invite(alliance_id: int, from_kingdom_id: int, target_kingdom_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Remove old invite first
+        await db.execute(
+            "DELETE FROM alliance_invites WHERE target_kingdom_id=? AND alliance_id=?",
+            (target_kingdom_id, alliance_id)
+        )
+        await db.execute(
+            "INSERT INTO alliance_invites (alliance_id, from_kingdom_id, target_kingdom_id, status, created_at) VALUES (?,?,?,?,?)",
+            (alliance_id, from_kingdom_id, target_kingdom_id, "pending", int(time.time()))
+        )
+        await db.commit()
+
+async def update_alliance_invite(invite_id: int, status: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE alliance_invites SET status=? WHERE id=?", (status, invite_id))
+        await db.commit()
+
+async def get_all_alliances():
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM alliances ORDER BY id DESC") as cur:
             return await cur.fetchall()
