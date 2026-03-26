@@ -80,6 +80,30 @@ async def init_db():
             created_at  INTEGER DEFAULT 0
         );
 
+        CREATE TABLE IF NOT EXISTS kingdom_wars (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            attacker_kingdom_id   INTEGER,
+            defender_kingdom_id   INTEGER,
+            attacker_name         TEXT,
+            defender_name         TEXT,
+            result                TEXT,
+            attacker_power        INTEGER DEFAULT 0,
+            defender_power        INTEGER DEFAULT 0,
+            loot_gold             INTEGER DEFAULT 0,
+            loot_wood             INTEGER DEFAULT 0,
+            loot_stone            INTEGER DEFAULT 0,
+            loot_food             INTEGER DEFAULT 0,
+            loot_iron             INTEGER DEFAULT 0,
+            timestamp             INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS kingdom_war_cooldowns (
+            attacker_id  INTEGER,
+            defender_id  INTEGER,
+            last_war     INTEGER DEFAULT 0,
+            PRIMARY KEY (attacker_id, defender_id)
+        );
+
         CREATE TABLE IF NOT EXISTS trade_offers (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             from_id         INTEGER,
@@ -284,3 +308,59 @@ async def get_listing_by_id(listing_id: int):
             "SELECT * FROM market_listings WHERE id=?", (listing_id,)
         ) as cur:
             return await cur.fetchone()
+
+# ──────────────────────────────────────────────
+# Kingdom War helpers
+# ──────────────────────────────────────────────
+async def add_kingdom_war(
+    attacker_kingdom_id, defender_kingdom_id,
+    attacker_name, defender_name,
+    result, attacker_power, defender_power,
+    loot_gold, loot_wood, loot_stone, loot_food, loot_iron
+):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO kingdom_wars
+               (attacker_kingdom_id, defender_kingdom_id,
+                attacker_name, defender_name, result,
+                attacker_power, defender_power,
+                loot_gold, loot_wood, loot_stone, loot_food, loot_iron,
+                timestamp)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (attacker_kingdom_id, defender_kingdom_id,
+             attacker_name, defender_name, result,
+             attacker_power, defender_power,
+             loot_gold, loot_wood, loot_stone, loot_food, loot_iron,
+             int(time.time()))
+        )
+        await db.commit()
+
+async def get_kingdom_wars(kingdom_id: int, limit=10):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT * FROM kingdom_wars
+               WHERE attacker_kingdom_id=? OR defender_kingdom_id=?
+               ORDER BY timestamp DESC LIMIT ?""",
+            (kingdom_id, kingdom_id, limit)
+        ) as cur:
+            return await cur.fetchall()
+
+async def get_last_war_between(attacker_id: int, defender_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT * FROM kingdom_wars
+               WHERE attacker_kingdom_id=? AND defender_kingdom_id=?
+               ORDER BY timestamp DESC LIMIT 1""",
+            (attacker_id, defender_id)
+        ) as cur:
+            return await cur.fetchone()
+
+async def get_all_kingdom_wars(limit=20):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM kingdom_wars ORDER BY timestamp DESC LIMIT ?", (limit,)
+        ) as cur:
+            return await cur.fetchall()
