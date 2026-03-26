@@ -1,4 +1,3 @@
-import re
 import time
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -17,12 +16,13 @@ def _fmt_time(seconds: int) -> str:
 
 
 def _escape(text: str) -> str:
-    """Escape karakter Markdown supaya username tidak bikin error."""
-    return re.sub(r'([_*`\[\]])', r'\\\1', str(text))
+    """Escape karakter spesial Markdown Telegram v1."""
+    for ch in ["_", "*", "[", "]", "`"]:
+        text = text.replace(ch, f"\\{ch}")
+    return text
 
 
 async def _ensure_player(update: Update):
-    """Auto-register if not yet in DB."""
     user = update.effective_user
     await create_player(user.id, user.username or user.first_name)
     return await get_player(user.id)
@@ -38,9 +38,10 @@ async def profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     next_exp = exp_needed(player["level"])
     bar_fill = int((player["exp"] / next_exp) * 10)
     bar = "█" * bar_fill + "░" * (10 - bar_fill)
+    name = _escape(player["username"])
 
     text = (
-        f"👤 *Profil: {_escape(player['username'])}*\n"
+        f"👤 *Profil: {name}*\n"
         f"━━━━━━━━━━━━━━━━\n"
         f"⭐ Level   : {player['level']}\n"
         f"📊 EXP     : {player['exp']}/{next_exp}\n"
@@ -65,8 +66,9 @@ async def inventory(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🚫 Akun kamu di-ban.")
         return
 
+    name = _escape(player["username"])
     text = (
-        f"🎒 *Inventory: {_escape(player['username'])}*\n\n"
+        f"🎒 *Inventory: {name}*\n\n"
         f"🪙 Gold  : {player['gold']:,}\n"
         f"🪵 Wood  : {player['wood']:,}\n"
         f"🪨 Stone : {player['stone']:,}\n"
@@ -126,6 +128,7 @@ async def leaderboard(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     lines = ["🏆 *LEADERBOARD TOP 10*\n"]
     for i, p in enumerate(players):
         medal = medals[i] if i < 3 else f"{i+1}."
-        lines.append(f"{medal} {_escape(p['username'])} — Lv.{p['level']} ({p['exp']} EXP)")
+        name = _escape(p["username"])
+        lines.append(f"{medal} {name} — Lv.{p['level']} ({p['exp']} EXP)")
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
