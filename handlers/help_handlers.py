@@ -9,7 +9,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await create_player(user.id, user.username or user.first_name)
 
     text = (
-        f"⚔️ *Selamat datang di IDLE MMO, {user.first_name}!*\n\n"
+        f"⚔️ *Selamat datang di KINGDOM OF AETHEL, {user.first_name}!*\n\n"
         "🏰 Kamu sudah terdaftar sebagai petualang!\n\n"
         "📜 *Langkah Pertama:*\n"
         "1️⃣ Klaim `/daily` untuk reward gratis\n"
@@ -100,7 +100,7 @@ async def tutorial(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ],
     ]
     await update.message.reply_text(
-        "📖 *TUTORIAL IDLE MMO*\n\nPilih topik yang ingin kamu pelajari:",
+        "📖 *TUTORIAL KINGDOM OF AETHEL*\n\nPilih topik yang ingin kamu pelajari:",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(kb)
     )
@@ -133,7 +133,7 @@ async def commands_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 TUTORIAL_PAGES = {
     "help_tut_1": (
         "1️⃣ *DASAR GAME*\n\n"
-        "🎮 Ini adalah *Idle MMO* — game yang jalan terus meski kamu offline!\n\n"
+        "🎮 Ini adalah *KINGDOM OF AETHEL* — game yang jalan terus meski kamu offline!\n\n"
         "📌 *Cara Main:*\n"
         "• `/start` untuk daftar\n"
         "• `/daily` setiap hari untuk Gold + Resource gratis\n"
