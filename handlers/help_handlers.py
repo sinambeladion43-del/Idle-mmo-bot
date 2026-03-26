@@ -52,6 +52,7 @@ async def _send_welcome(update_or_query, user, gender: str, is_callback=False):
             InlineKeyboardButton("📖 Tutorial",   callback_data="help_tutorial"),
             InlineKeyboardButton("📋 Commands",   callback_data="help_commands"),
         ],
+        [InlineKeyboardButton("👤 Lihat Profil",  callback_data="help_profile")],
     ]
     if is_callback:
         await update_or_query.edit_message_text(
@@ -366,7 +367,41 @@ async def help_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data == "help_profile":
-        await query.answer("Ketik /profile untuk lihat karakter kamu!", show_alert=True)
+        user = update.effective_user
+        from database import get_player
+        from game_data import exp_needed
+        player = await get_player(user.id)
+        if not player:
+            await query.answer("Ketik /start dulu untuk daftar!", show_alert=True)
+            return
+        def _esc(t):
+            for ch in ["_","*","[","]","`"]:
+                t = t.replace(ch, f"\\{ch}")
+            return t
+        next_exp = exp_needed(player["level"])
+        bar_fill = int((player["exp"] / next_exp) * 10)
+        bar = "█" * bar_fill + "░" * (10 - bar_fill)
+        gender_icon = "⚔️" if player.get("gender") == "male" else "🌸" if player.get("gender") == "female" else "❓"
+        gender_label = "Pria" if player.get("gender") == "male" else "Wanita" if player.get("gender") == "female" else "Belum dipilih"
+        text = (
+            f"👤 *Profil: {_esc(player['username'])}*\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"{gender_icon} Gender  : {gender_label}\n"
+            f"⭐ Level   : {player['level']}\n"
+            f"📊 EXP     : {player['exp']}/{next_exp}\n"
+            f"[{bar}]\n"
+            f"❤️ HP       : {player['hp']}/{player['max_hp']}\n"
+            f"⚔️ Attack   : {player['attack_pow']}\n"
+            f"🛡️ Defense  : {player['defense_pow']}\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"🪙 Gold     : {player['gold']:,}\n"
+            f"🪵 Wood     : {player['wood']:,}\n"
+            f"🪨 Stone    : {player['stone']:,}\n"
+            f"🌾 Food     : {player['food']:,}\n"
+            f"⚔️ Iron     : {player['iron']:,}\n"
+        )
+        await query.answer()
+        await update.effective_message.reply_text(text, parse_mode="Markdown")
 
     elif data in TUTORIAL_PAGES:
         await query.edit_message_text(
