@@ -1,52 +1,16 @@
+import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from database import get_player, create_player, update_player
-from game_data import exp_needed
+from database import get_player, create_player
 
-
-def _escape(text: str) -> str:
-    for ch in ["_", "*", "[", "]", "`"]:
-        text = text.replace(ch, f"\\{ch}")
-    return text
-
-
+# ─────────────────────────────────────────────
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await create_player(user.id, user.username or user.first_name)
-    player = await get_player(user.id)
 
-    if not player["gender"]:
-        kb = [[
-            InlineKeyboardButton("⚔️ Pria",   callback_data="help_gender_male"),
-            InlineKeyboardButton("🌸 Wanita", callback_data="help_gender_female"),
-        ]]
-        await update.message.reply_text(
-            f"⚔️ *Selamat datang di IDLE MMO, {user.first_name}!*\n\n"
-            "Sebelum memulai petualangan...\n\n"
-            "👤 *Pilih Gender Karaktermu:*",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(kb)
-        )
-        return
-
-    await _send_welcome(update.message, player)
-
-
-async def _send_welcome(message_obj, player):
-    gender_icon  = "⚔️" if player["gender"] == "male" else "🌸"
-    gender_label = "Pria" if player["gender"] == "male" else "Wanita"
-    name = _escape(player["username"])
-    kb = [
-        [
-            InlineKeyboardButton("📖 Tutorial",  callback_data="help_tutorial"),
-            InlineKeyboardButton("📋 Commands",  callback_data="help_commands"),
-        ],
-        [InlineKeyboardButton("👤 Lihat Profil", callback_data="help_profile")],
-    ]
-    await message_obj.reply_text(
-        f"⚔️ *Selamat datang di IDLE MMO, {name}!*\n\n"
-        f"🏰 Kamu sudah terdaftar sebagai petualang!\n"
-        f"{gender_icon} Gender: *{gender_label}*\n\n"
+    text = (
+        f"⚔️ *Selamat datang di IDLE MMO, {user.first_name}!*\n\n"
+        "🏰 Kamu sudah terdaftar sebagai petualang!\n\n"
         "📜 *Langkah Pertama:*\n"
         "1️⃣ Klaim `/daily` untuk reward gratis\n"
         "2️⃣ Bangun `/build farm` untuk produksi Food\n"
@@ -56,56 +20,73 @@ async def _send_welcome(message_obj, player):
         "Tambahkan bot ke Group Telegram — satu group = satu Kingdom!\n"
         "Lalu ketik `/join` di group untuk bergabung.\n\n"
         "📖 /tutorial — panduan lengkap cara main\n"
-        "📋 /help — semua command",
-        parse_mode="Markdown",
+        "📋 /help — semua command"
+    )
+    kb = [
+        [
+            InlineKeyboardButton("📖 Tutorial",    callback_data="help_tutorial"),
+            InlineKeyboardButton("📋 Commands",    callback_data="help_commands"),
+        ],
+        [InlineKeyboardButton("👤 Lihat Profil",   callback_data="help_profile")],
+    ]
+    await update.message.reply_text(
+        text, parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(kb)
     )
 
 
+# ─────────────────────────────────────────────
 async def help_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = (
         "📋 *SEMUA COMMAND*\n\n"
+
         "👤 *Player*\n"
         "`/start` — Daftar & mulai game\n"
         "`/profile` — Lihat stats & level kamu\n"
         "`/inventory` — Lihat resource kamu\n"
         "`/resources` — Lihat resource + tips jual\n"
         "`/daily` — Klaim reward harian (reset 24 jam)\n"
-        "`/setname [nama]` — Ganti nama karakter\n"
         "`/leaderboard` — Ranking 10 pemain terkuat\n\n"
+
         "🏘️ *Bangunan*\n"
         "`/buildings` — Lihat semua bangunan & levelnya\n"
         "`/build [nama]` — Bangun atau upgrade bangunan\n"
         "`/status` — Cek bangunan yang sedang dibangun\n"
         "`/collect` — Ambil resource produksi offline\n\n"
-        "⚔️ *Battle (1v1)*\n"
-        "`/attack @username` — Serang pemain lain\n"
+
+        "⚔️ *Battle 1v1*\n"
+        "`/attack` — Serang pemain (reply pesan lawan)\n"
         "`/defend` — Lihat kekuatan pertahanan kamu\n"
-        "`/war` — Riwayat pertempuran 1v1\n\n"
+        "`/battlelog` — Riwayat pertempuran 1v1\n\n"
+
         "🏰 *Kingdom*\n"
         "`/kingdom` — Info kerajaan (group/DM)\n"
         "`/join` — Bergabung ke kerajaan group ini\n"
         "`/leave` — Keluar dari kerajaan\n"
         "`/contribute [res] [jml]` — Sumbang ke kas kerajaan\n"
         "`/kadmin` — Command admin kerajaan\n\n"
-        "🔥 *Kingdom War*\n"
-        "`/kwar` — Info & stats kingdom war\n"
-        "`/kwar [nama kerajaan]` — Tantang kerajaan lain\n"
-        "`/kwar history` — Riwayat perang kerajaan\n\n"
+
+        "⚔️ *War System (2 Kerajaan)*\n"
+        "`/war` — Info & panel perang kerajaan\n"
+        "`/war declare` — Nyatakan perang ke musuh\n"
+        "`/war status` — Status voting perang\n"
+        "`/war history` — Riwayat perang kerajaan\n\n"
+
         "🤝 *Aliansi*\n"
         "`/alliance` — Info aliansi kerajaan kamu\n"
         "`/alliance create [nama]` — Buat aliansi baru\n"
-        "`/alliance invite [nama kd]` — Undang kerajaan lain\n"
-        "`/alliance accept` — Terima undangan\n"
-        "`/alliance reject` — Tolak undangan\n"
+        "`/alliance invite [nama kd]` — Undang kerajaan\n"
+        "`/alliance accept/reject` — Terima/tolak undangan\n"
         "`/alliance leave` — Keluar dari aliansi\n"
         "`/alliance disband` — Bubarkan aliansi\n"
         "`/alliance list` — Lihat semua aliansi\n\n"
+
         "💰 *Market & Trading*\n"
         "`/market` — Lihat semua listing pasar\n"
         "`/market sell [res] [jml] [harga]` — Jual resource\n"
         "`/market buy [ID]` — Beli listing di pasar\n"
         "`/trade @user [res] [jml] [res] [jml]` — Trade langsung\n\n"
+
         "📖 *Bantuan*\n"
         "`/tutorial` — Panduan lengkap cara main\n"
         "`/help` — Tampilkan pesan ini\n"
@@ -114,21 +95,25 @@ async def help_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode="Markdown")
 
 
+# ─────────────────────────────────────────────
 async def tutorial(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     kb = [
         [
-            InlineKeyboardButton("1️⃣ Dasar Game",     callback_data="help_tut_1"),
-            InlineKeyboardButton("2️⃣ Bangunan",       callback_data="help_tut_2"),
+            InlineKeyboardButton("1️⃣ Dasar Game",      callback_data="help_tut_1"),
+            InlineKeyboardButton("2️⃣ Bangunan",        callback_data="help_tut_2"),
         ],
         [
-            InlineKeyboardButton("3️⃣ Battle 1v1",     callback_data="help_tut_3"),
-            InlineKeyboardButton("4️⃣ Kingdom",        callback_data="help_tut_4"),
+            InlineKeyboardButton("3️⃣ Battle 1v1",      callback_data="help_tut_3"),
+            InlineKeyboardButton("4️⃣ Kingdom",         callback_data="help_tut_4"),
         ],
         [
-            InlineKeyboardButton("5️⃣ Market & Trade", callback_data="help_tut_5"),
-            InlineKeyboardButton("6️⃣ Kingdom War",    callback_data="help_tut_6"),
+            InlineKeyboardButton("5️⃣ Market",          callback_data="help_tut_5"),
+            InlineKeyboardButton("6️⃣ War System",      callback_data="help_tut_6"),
         ],
-        [InlineKeyboardButton("🤝 Aliansi",            callback_data="help_tut_7")],
+        [
+            InlineKeyboardButton("7️⃣ Aliansi",         callback_data="help_tut_7"),
+            InlineKeyboardButton("8️⃣ Tips & Tricks",   callback_data="help_tut_8"),
+        ],
     ]
     await update.message.reply_text(
         "📖 *TUTORIAL IDLE MMO*\n\nPilih topik yang ingin kamu pelajari:",
@@ -137,6 +122,7 @@ async def tutorial(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ─────────────────────────────────────────────
 async def commands_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = (
         "⚙️ *COMMAND ADMIN*\n\n"
@@ -161,6 +147,7 @@ async def commands_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode="Markdown")
 
 
+# ─────────────────────────────────────────────
 TUTORIAL_PAGES = {
     "help_tut_1": (
         "1️⃣ *DASAR GAME*\n\n"
@@ -168,14 +155,15 @@ TUTORIAL_PAGES = {
         "📌 *Cara Main:*\n"
         "• `/start` untuk daftar\n"
         "• `/daily` setiap hari untuk Gold + Resource gratis\n"
-        "• `/build farm` untuk mulai produksi\n"
+        "• `/build farm` untuk mulai produksi resource\n"
         "• Kembali nanti dan `/collect` resource yang terkumpul\n\n"
         "📊 *Stats Karakter:*\n"
         "• ❤️ HP — nyawa saat battle\n"
         "• ⚔️ Attack — kekuatan serangan\n"
         "• 🛡️ Defense — kekuatan pertahanan\n"
         "• ⭐ Level — naik dengan EXP dari battle & aktivitas\n\n"
-        "💡 *Tips:* Klaim `/daily` setiap hari dan selalu `/collect` resource!"
+        "💡 *Tips:* Klaim `/daily` setiap hari dan selalu `/collect` resource!\n\n"
+        "📋 Lihat profil kamu dengan `/profile`"
     ),
     "help_tut_2": (
         "2️⃣ *BANGUNAN*\n\n"
@@ -189,108 +177,134 @@ TUTORIAL_PAGES = {
         "• 🏪 `market` — +Gold & akses trading (max lv.5)\n"
         "• 🏰 `castle` — +HP & semua stats (max lv.5)\n\n"
         "⚙️ *Cara Build:*\n"
-        "Ketik `/build` → pilih dari tombol\n"
-        "Cek progress dengan `/status`\n"
-        "Ambil hasil produksi dengan `/collect`\n\n"
-        "⚠️ Resource produksi maksimal terkumpul *12 jam*!"
+        "1. Ketik `/build` → pilih dari tombol\n"
+        "2. Cek progress: `/status`\n"
+        "3. Ambil hasil: `/collect`\n\n"
+        "⚠️ Resource terkumpul maksimal *12 jam* — sering-sering collect!"
     ),
     "help_tut_3": (
         "3️⃣ *BATTLE 1v1*\n\n"
         "⚔️ Serang pemain lain dan rampas Gold mereka!\n\n"
-        "🎯 *Cara Serang:*\n"
-        "`/attack @username`\n\n"
+        "🎯 *Cara Menyerang:*\n"
+        "• *Reply* pesan lawan lalu ketik `/attack`\n"
+        "• Atau: `/attack [user_id]` jika tau ID pemain\n\n"
         "📊 *Perhitungan Battle:*\n"
-        "• Kemenangan ditentukan oleh Attack vs Defense\n"
-        "• Ada faktor random ±20%\n"
+        "• Attack vs Defense + random ±20%\n"
         "• Menang = dapat 10% Gold musuh + EXP\n"
-        "• Kalah = kehilangan sedikit HP + sedikit EXP\n\n"
-        "🛡️ *Cek Pertahanan:*\n"
-        "`/defend` — lihat kekuatan pertahananmu\n\n"
-        "📜 *Riwayat:*\n"
-        "`/war` — lihat semua pertempuranmu\n\n"
-        "⏰ *Cooldown:* 1 jam antar serangan ke target sama\n\n"
-        "💡 Upgrade `barracks` untuk +Attack\n"
-        "💡 Upgrade `wall` untuk +Defense"
+        "• Kalah = HP berkurang + sedikit EXP\n\n"
+        "🛡️ `/defend` — lihat kekuatan pertahananmu\n"
+        "📜 `/battlelog` — riwayat battle 1v1\n\n"
+        "⏰ *Cooldown:* 1 jam per target\n\n"
+        "💡 Upgrade `barracks` → +Attack\n"
+        "💡 Upgrade `wall` → +Defense\n\n"
+        "🔔 Lawan otomatis dapat notifikasi saat diserang!"
     ),
     "help_tut_4": (
         "4️⃣ *KINGDOM SYSTEM*\n\n"
         "🏰 Satu Telegram Group = Satu Kingdom!\n\n"
-        "📌 *Cara Setup & Join Kingdom:*\n"
+        "📌 *Setup Kingdom:*\n"
         "1. Tambahkan bot ke Group Telegram\n"
-        "2. Ketik `/kingdom` di group → kerajaan otomatis dibuat\n"
-        "3. Ketik `/join` di group → langsung jadi member\n"
-        "4. Kalau sudah di kerajaan lain → muncul konfirmasi pindah\n\n"
+        "2. Ketik `/kingdom` → kerajaan otomatis dibuat\n"
+        "3. Ketik `/join` → langsung jadi member\n\n"
         "👥 *Kerja Sama:*\n"
-        "`/contribute gold 500` — sumbang Gold ke kas\n"
-        "`/contribute wood 200` — sumbang Wood ke kas\n"
+        "`/contribute gold 500` — sumbang ke kas kerajaan\n"
         "`/kingdom` — lihat info & kas kerajaan\n"
         "`/leave` — keluar dari kerajaan\n\n"
-        "⚙️ *Kingdom Admin:*\n"
-        "`/kadmin setname` — ganti nama kerajaan\n"
-        "`/kadmin settax` — set pajak 0-20%\n"
+        "⚙️ *Kingdom Admin (admin group):*\n"
+        "`/kadmin setname [nama]` — ganti nama\n"
+        "`/kadmin settax [0-20]` — set pajak\n"
         "`/kadmin promote @user` — jadikan officer\n"
         "`/kadmin kick @user` — keluarkan member\n"
-        "`/kadmin announce` — umumkan ke group"
+        "`/kadmin announce [pesan]` — umumkan ke group"
     ),
     "help_tut_5": (
         "5️⃣ *MARKET & TRADING*\n\n"
         "💰 Jual beli resource dengan pemain lain!\n\n"
         "📊 *Market Global:*\n"
         "`/market` — lihat semua listing\n"
-        "`/market sell wood 100 500` — jual 100 Wood seharga 500 Gold\n"
-        "`/market buy [ID]` — beli listing berdasarkan ID\n\n"
+        "`/market sell wood 100 500` — jual 100 Wood harga 500 Gold\n"
+        "`/market buy [ID]` — beli berdasarkan ID\n\n"
         "🔄 *Trade Langsung:*\n"
-        "`/trade @username wood 50 gold 100`\n"
-        "= Tawarkan 50 Wood, minta 100 Gold\n\n"
+        "`/trade @user wood 100 gold 500`\n"
+        "= Tawarkan 100 Wood, minta 500 Gold\n\n"
         "💡 *Info Penting:*\n"
-        "• Ada fee *5%* untuk setiap penjualan di market\n"
-        "• Trade langsung tidak kena fee\n"
+        "• Fee *5%* untuk setiap penjualan di market\n"
+        "• Trade langsung = tidak ada fee\n"
         "• Bangun `market` untuk bonus Gold pasif\n\n"
         "📈 *Resource yang bisa ditrade:*\n"
-        "🪙 gold • 🪵 wood • 🪨 stone • 🌾 food • ⚔️ iron"
+        "🪵 wood • 🪨 stone • 🌾 food • ⚔️ iron"
     ),
     "help_tut_6": (
-        "6️⃣ *KINGDOM WAR*\n\n"
-        "🔥 Perang antar kerajaan untuk merampas resource kas lawan!\n\n"
-        "📌 *Cara Berperang:*\n"
-        "1. Ketik `/kwar` di group untuk lihat info\n"
-        "2. Ketik `/kwar [nama kerajaan lawan]`\n"
-        "3. Preview kekuatan & potensi rampasan muncul\n"
-        "4. Konfirmasi → perang dimulai!\n\n"
+        "6️⃣ *WAR SYSTEM — PERANG 2 KERAJAAN*\n\n"
+        "🔥 Sistem perang khusus antara 2 kerajaan dengan voting member!\n\n"
+        "📌 *Alur Perang:*\n"
+        "1️⃣ Admin Group A ketik `/war declare`\n"
+        "2️⃣ Notifikasi + tombol voting masuk ke Group B\n"
+        "3️⃣ Member Group B vote *Setuju* atau *Tolak* (30 menit)\n"
+        "4️⃣ Kalau >50% setuju → Perang dimulai!\n"
+        "5️⃣ Hasil perang di-announce ke kedua group\n\n"
         "📊 *Sistem Perang:*\n"
-        "• Kekuatan = total ATK + DEF + Level semua member\n"
-        "• Ada random ±15% — bisa saja yang lemah menang!\n"
-        "• Menang = rampas *15% semua resource* kas lawan\n"
-        "• Kalah = kehilangan *15% resource* kas sendiri\n\n"
-        "⏰ *Cooldown:* 6 jam per target kerajaan\n\n"
-        "🔔 Group lawan otomatis dapat notifikasi hasil perang\n\n"
-        "📜 `/kwar history` — lihat riwayat perang kerajaan\n\n"
-        "⚠️ *Hanya Admin/Officer* yang bisa nyatakan perang!\n"
-        "💡 Makin banyak member aktif = kerajaan makin kuat!"
+        "• Kekuatan = total ATK+DEF+Level semua member\n"
+        "• Random ±15% — yang lemah bisa menang!\n"
+        "• Menang = rampas 15% resource kas lawan\n"
+        "• Kalah = kehilangan 15% resource kas sendiri\n\n"
+        "⏰ *Cooldown:* 24 jam antar perang\n\n"
+        "📋 *Command:*\n"
+        "`/war` — panel info perang\n"
+        "`/war declare` — nyatakan perang *(admin only)*\n"
+        "`/war status` — lihat progress voting\n"
+        "`/war history` — riwayat perang kerajaan\n\n"
+        "⚠️ Hanya *Admin Group* yang bisa declare war!"
     ),
     "help_tut_7": (
-        "🤝 *SISTEM ALIANSI*\n\n"
-        "Aliansi adalah persekutuan antar kerajaan — anggota aliansi *tidak bisa saling serang!*\n\n"
+        "7️⃣ *SISTEM ALIANSI*\n\n"
+        "🤝 Persekutuan antar kerajaan — sesama anggota *tidak bisa saling serang!*\n\n"
         "📌 *Cara Buat Aliansi:*\n"
-        "1. Ketik di group kerajaan kamu:\n"
+        "1. Ketik di group kerajaanmu:\n"
         "   `/alliance create Nama Aliansi`\n"
-        "2. Kerajaanmu otomatis jadi *Pendiri*\n"
-        "3. Undang kerajaan lain untuk bergabung\n\n"
+        "2. Kerajaanmu jadi *Pendiri*\n"
+        "3. Undang kerajaan lain bergabung\n\n"
         "📨 *Cara Mengundang:*\n"
         "`/alliance invite Nama Kerajaan`\n"
-        "• Target dapat notifikasi otomatis di group mereka\n"
-        "• Terima: `/alliance accept` | Tolak: `/alliance reject`\n\n"
+        "→ Target dapat notif otomatis di group mereka\n"
+        "→ Terima: `/alliance accept`\n"
+        "→ Tolak: `/alliance reject`\n\n"
         "📋 *Semua Command:*\n"
-        "`/alliance` — lihat info & undangan pending\n"
-        "`/alliance create [nama]` — buat aliansi\n"
+        "`/alliance` — info aliansi + cek undangan\n"
+        "`/alliance create [nama]` — buat aliansi baru\n"
         "`/alliance invite [nama kd]` — undang kerajaan\n"
         "`/alliance accept` — terima undangan\n"
         "`/alliance reject` — tolak undangan\n"
         "`/alliance leave` — keluar dari aliansi\n"
         "`/alliance disband` — bubarkan aliansi\n"
         "`/alliance list` — lihat semua aliansi\n\n"
-        "⚔️ Sesama anggota aliansi *tidak bisa saling serang*!\n"
+        "⚔️ Sesama anggota aliansi *tidak bisa saling serang* di War!\n"
         "💡 Satu kerajaan hanya bisa di *satu aliansi*"
+    ),
+    "help_tut_8": (
+        "8️⃣ *TIPS & TRICKS*\n\n"
+        "💡 *Untuk Pemula:*\n"
+        "• Prioritas build: `farm` → `mine` → `lumbermill` dulu\n"
+        "• Klaim `/daily` setiap hari tanpa gagal\n"
+        "• `/collect` resource sebelum penuh (max 12 jam)\n"
+        "• Gabung kingdom dan `/contribute` untuk bantu kerajaan\n\n"
+        "⚔️ *Untuk Battle:*\n"
+        "• Upgrade `barracks` untuk nambah Attack\n"
+        "• Upgrade `wall` untuk nambah Defense\n"
+        "• Serang lawan yang levelnya lebih rendah untuk EXP mudah\n"
+        "• Reply pesan lawan → `/attack` untuk serang\n\n"
+        "🏰 *Untuk Kingdom:*\n"
+        "• Makin banyak member aktif = kerajaan makin kuat di war\n"
+        "• Isi kas kerajaan dengan `/contribute` sebelum war\n"
+        "• Admin harus aktif urus kerajaan\n\n"
+        "💰 *Untuk Economy:*\n"
+        "• Jual resource yang berlebih di `/market`\n"
+        "• Beli resource yang kurang dari pemain lain\n"
+        "• Trade langsung ke teman = tidak kena fee 5%\n\n"
+        "🔔 *Notifikasi:*\n"
+        "• Kamu dapat DM saat diserang\n"
+        "• Group dapat notif saat ada deklarasi perang\n"
+        "• Group dapat notif saat diundang aliansi"
     ),
 }
 
@@ -299,70 +313,30 @@ _BACK_KB = InlineKeyboardMarkup([[
 ]])
 
 
+# ─────────────────────────────────────────────
 async def help_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
 
-    # ── Gender selection ──────────────────────
-    if data in ("help_gender_male", "help_gender_female"):
-        user = update.effective_user
-        gender = "male" if data == "help_gender_male" else "female"
-        await update_player(user.id, gender=gender)
-        player = await get_player(user.id)
-        # Kirim pesan welcome BARU — tidak edit pesan gender
-        await _send_welcome(query.message, player)
-        return
-
-    # ── Tombol Lihat Profil ───────────────────
-    if data == "help_profile":
-        user = update.effective_user
-        player = await get_player(user.id)
-        if not player:
-            return
-        next_exp = exp_needed(player["level"])
-        bar_fill = int((player["exp"] / next_exp) * 10)
-        bar = "█" * bar_fill + "░" * (10 - bar_fill)
-        gender_icon  = "⚔️" if player["gender"] == "male" else "🌸" if player["gender"] == "female" else "❓"
-        gender_label = "Pria" if player["gender"] == "male" else "Wanita" if player["gender"] == "female" else "Belum dipilih"
-        name = _escape(player["username"])
-        text = (
-            f"👤 *Profil: {name}*\n"
-            f"━━━━━━━━━━━━━━━━\n"
-            f"{gender_icon} Gender  : {gender_label}\n"
-            f"⭐ Level   : {player['level']}\n"
-            f"📊 EXP     : {player['exp']}/{next_exp}\n"
-            f"[{bar}]\n"
-            f"❤️ HP       : {player['hp']}/{player['max_hp']}\n"
-            f"⚔️ Attack   : {player['attack_pow']}\n"
-            f"🛡️ Defense  : {player['defense_pow']}\n"
-            f"━━━━━━━━━━━━━━━━\n"
-            f"🪙 Gold     : {player['gold']:,}\n"
-            f"🪵 Wood     : {player['wood']:,}\n"
-            f"🪨 Stone    : {player['stone']:,}\n"
-            f"🌾 Food     : {player['food']:,}\n"
-            f"⚔️ Iron     : {player['iron']:,}\n"
-        )
-        # Kirim sebagai pesan BARU
-        await query.message.reply_text(text, parse_mode="Markdown")
-        return
-
-    # ── Tutorial navigation (edit message) ───
     if data == "help_tutorial":
         kb = [
             [
-                InlineKeyboardButton("1️⃣ Dasar Game",     callback_data="help_tut_1"),
-                InlineKeyboardButton("2️⃣ Bangunan",       callback_data="help_tut_2"),
+                InlineKeyboardButton("1️⃣ Dasar Game",    callback_data="help_tut_1"),
+                InlineKeyboardButton("2️⃣ Bangunan",      callback_data="help_tut_2"),
             ],
             [
-                InlineKeyboardButton("3️⃣ Battle 1v1",     callback_data="help_tut_3"),
-                InlineKeyboardButton("4️⃣ Kingdom",        callback_data="help_tut_4"),
+                InlineKeyboardButton("3️⃣ Battle 1v1",    callback_data="help_tut_3"),
+                InlineKeyboardButton("4️⃣ Kingdom",       callback_data="help_tut_4"),
             ],
             [
-                InlineKeyboardButton("5️⃣ Market & Trade", callback_data="help_tut_5"),
-                InlineKeyboardButton("6️⃣ Kingdom War",    callback_data="help_tut_6"),
+                InlineKeyboardButton("5️⃣ Market",        callback_data="help_tut_5"),
+                InlineKeyboardButton("6️⃣ War System",    callback_data="help_tut_6"),
             ],
-            [InlineKeyboardButton("🤝 Aliansi",            callback_data="help_tut_7")],
+            [
+                InlineKeyboardButton("7️⃣ Aliansi",       callback_data="help_tut_7"),
+                InlineKeyboardButton("8️⃣ Tips & Tricks", callback_data="help_tut_8"),
+            ],
         ]
         await query.edit_message_text(
             "📖 *TUTORIAL IDLE MMO*\n\nPilih topik:",
@@ -373,6 +347,12 @@ async def help_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     elif data == "help_commands":
         await query.edit_message_text(
             "📋 Ketik /help untuk melihat semua command.",
+            parse_mode="Markdown"
+        )
+
+    elif data == "help_profile":
+        await query.edit_message_text(
+            "👤 Ketik /profile untuk melihat karakter kamu!",
             parse_mode="Markdown"
         )
 
