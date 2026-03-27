@@ -30,7 +30,6 @@ async def init_db():
             is_banned   INTEGER DEFAULT 0,
             kingdom_id  INTEGER DEFAULT 0,
             role        TEXT DEFAULT 'member',
-            gender      TEXT DEFAULT '',
             created_at  INTEGER DEFAULT 0
         );
 
@@ -55,7 +54,6 @@ async def init_db():
             iron        INTEGER DEFAULT 0,
             tax_rate    INTEGER DEFAULT 5,
             admin_id    INTEGER DEFAULT 0,
-            gender      TEXT DEFAULT '',
             created_at  INTEGER DEFAULT 0
         );
 
@@ -79,8 +77,26 @@ async def init_db():
             resource    TEXT,
             amount      INTEGER,
             price       INTEGER,
-            gender      TEXT DEFAULT '',
             created_at  INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS war_declarations (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            attacker_kingdom_id   INTEGER,
+            defender_kingdom_id   INTEGER,
+            declared_by           INTEGER,
+            status                TEXT DEFAULT 'pending',
+            created_at            INTEGER DEFAULT 0,
+            expires_at            INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS war_votes (
+            declaration_id  INTEGER,
+            user_id         INTEGER,
+            kingdom_id      INTEGER,
+            vote            TEXT,
+            voted_at        INTEGER DEFAULT 0,
+            PRIMARY KEY (declaration_id, user_id)
         );
 
         CREATE TABLE IF NOT EXISTS alliances (
@@ -144,13 +160,6 @@ async def init_db():
         );
         """)
         await db.commit()
-
-        # Migration: tambah kolom gender jika belum ada
-        try:
-            await db.execute("ALTER TABLE players ADD COLUMN gender TEXT DEFAULT ''")
-            await db.commit()
-        except Exception:
-            pass  # Kolom sudah ada, skip
 
 # ──────────────────────────────────────────────
 # Player helpers
@@ -500,3 +509,97 @@ async def get_all_alliances():
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM alliances ORDER BY id DESC") as cur:
             return await cur.fetchall()
+
+# ──────────────────────────────────────────────
+# War Declaration & Voting helpers
+# ──────────────────────────────────────────────
+async def create_war_declaration(attacker_kingdom_id: int, defender_kingdom_id: int, declared_by: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Hapus deklarasi lama yang masih pending
+        await db.execute(
+            "DELETE FROM war_declarations WHERE status='pending'",
+        )
+        await db.execute(
+            """INSERT INTO war_declarations
+               (attacker_kingdom_id, defender_kingdom_id, declared_by, status, created_at, expires_at)
+               VALUES (?,?,?,?,?,?)""",
+            (attacker_kingdom_id, defender_kingdom_id, declared_by,
+             "pending", int(time.time()), int(time.time()) + 1800)  # 30 menit
+        )
+        await db.commit()
+        async with db.execute("SELECT last_insert_rowid()") as cur:
+            row = await cur.fetchone()
+            return row[0] if row else None
+
+async def get_active_declaration(attacker_id: int = None, defender_id: int = None):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        now = int(time.time())
+        if attacker_id and defender_id:
+            async with db.execute(
+                """SELECT * FROM war_declarations
+                   WHERE attacker_kingdom_id=? AND defender_kingdom_id=?
+                   AND status='pending' AND expires_at > ?""",
+                (attacker_id, defender_id, now)
+            ) as cur:
+                return await cur.fetchone()
+        elif defender_id:
+            async with db.execute(
+                """SELECT * FROM war_declarations
+                   WHERE defender_kingdom_id=? AND status='pending' AND expires_at > ?""",
+                (defender_id, now)
+            ) as cur:
+                return await cur.fetchone()
+        elif attacker_id:
+            async with db.execute(
+                """SELECT * FROM war_declarations
+                   WHERE attacker_kingdom_id=? AND status='pending' AND expires_at > ?""",
+                (attacker_id, now)
+            ) as cur:
+                return await cur.fetchone()
+
+async def update_declaration_status(declaration_id: int, status: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE war_declarations SET status=? WHERE id=?", (status, declaration_id)
+        )
+        await db.commit()
+
+async def add_vote(declaration_id: int, user_id: int, kingdom_id: int, vote: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT OR REPLACE INTO war_votes
+               (declaration_id, user_id, kingdom_id, vote, voted_at)
+               VALUES (?,?,?,?,?)""",
+            (declaration_id, user_id, kingdom_id, vote, int(time.time()))
+        )
+        await db.commit()
+
+async def get_votes(declaration_id: int, kingdom_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM war_votes WHERE declaration_id=? AND kingdom_id=?",
+            (declaration_id, kingdom_id)
+        ) as cur:
+            return await cur.fetchall()
+
+async def get_declaration_by_id(declaration_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM war_declarations WHERE id=?", (declaration_id,)
+        ) as cur:
+            return await cur.fetchone()
+
+async def get_last_war_cooldown(kingdom_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT * FROM war_declarations
+               WHERE (attacker_kingdom_id=? OR defender_kingdom_id=?)
+               AND status IN ('war_done', 'rejected')
+               ORDER BY created_at DESC LIMIT 1""",
+            (kingdom_id, kingdom_id)
+        ) as cur:
+            return await cur.fetchone()
